@@ -1,0 +1,58 @@
+Options -Indexes
+ErrorDocument 404 /404.php
+
+php_value display_errors 1
+php_value mbstring.internal_encoding UTF-8
+php_value mbstring.func_overload 2
+php_value max_input_vars 10000
+php_value opcache.revalidate_freq 0
+php_value upload_max_filesize 30M
+php_value memory_limit 1024M
+php_value post_max_size 32M
+php_value max_execution_time 600
+SetEnv TZ Europe/Moscow
+
+<IfModule mod_rewrite.c>
+	Options +FollowSymLinks
+	RewriteEngine On
+
+	### www.site.ru -> site.ru
+    RewriteCond %{HTTP_HOST} .
+    RewriteCond %{HTTP_HOST} ^www.(.*)$ [NC]
+    RewriteRule ^(.*)$ https://%1/$1 [R=301,L]
+
+    RewriteCond %{HTTP:X-Forwarded-Proto} !https$
+    RewriteCond %{HTTPS} off
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+    ### end www.site.ru -> site.ru
+	
+	RewriteCond %{REQUEST_FILENAME} !-f
+	RewriteCond %{REQUEST_FILENAME} !-l
+	RewriteCond %{REQUEST_FILENAME} !-d
+
+	#RewriteCond %{REQUEST_FILENAME} !/bitrix/urlrewrite.php$
+	#RewriteRule ^(.*)$ /bitrix/urlrewrite.php [L]
+
+	# новые правила для роутинга
+    RewriteCond %{REQUEST_FILENAME} !/bitrix/routing_index.php$
+    RewriteRule ^(.*)$ /bitrix/routing_index.php [L]
+
+	RewriteRule .* - [E=REMOTE_USER:%{HTTP:Authorization}]
+</IfModule>
+
+<IfModule mod_dir.c>
+	DirectoryIndex index.php index.html
+</IfModule>
+
+<IfModule mod_negotiation.c>
+	Options -MultiViews
+</IfModule>
+
+<IfModule mod_expires.c>
+	ExpiresActive on
+	ExpiresByType image/jpeg "access plus 3 day"
+	ExpiresByType image/gif "access plus 3 day"
+	ExpiresByType image/png "access plus 3 day"
+	ExpiresByType text/css "access plus 3 day"
+	ExpiresByType application/javascript "access plus 3 day"
+</IfModule>

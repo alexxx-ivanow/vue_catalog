@@ -1,0 +1,61 @@
+export default {
+    name: 'CatalogBreadcrumbs',
+    data() {
+        return {
+            items: [],
+            loading: false,
+        };
+    },
+    mounted() {
+        this.loadBreadcrumbs();
+    },
+    methods: {
+        async loadBreadcrumbs() {
+            this.loading = true;
+            try {
+                const page = window.__PAGE_DATA__?.page || {};
+                const sectionId = Number(
+                    page.section_id ||
+                    window.__PAGE_DATA__?.section?.id ||
+                    window.__PAGE_DATA__?.product?.data?.SECTION_ID ||
+                    0
+                );
+                const productId = Number(window.__PAGE_DATA__?.product?.data?.ID || 0);
+                const pageType = String(page.type || 'catalog');
+
+                const params = new URLSearchParams({
+                    pageType,
+                    section: String(sectionId),
+                    product: String(productId),
+                });
+
+                const res = await fetch('/api/v1/catalog/breadcrumbs?' + params.toString(), {
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                });
+                const data = await res.json();
+                this.items = Array.isArray(data.items) ? data.items : [];
+            } catch (error) {
+                console.error('Ошибка загрузки хлебных крошек:', error);
+                this.items = [];
+            } finally {
+                this.loading = false;
+            }
+        },
+    },
+    template: `
+        <nav v-if="items.length" class="breadcrumbs" aria-label="Хлебные крошки">
+            <a
+                v-for="(item, index) in items"
+                :key="item.title + '-' + index"
+                :href="item.url || null"
+                class="breadcrumbs__item"
+                :class="{ 'breadcrumbs__item--current': !item.url }"
+                :aria-current="!item.url ? 'page' : null"
+            >
+                {{ item.title }}
+            </a>
+        </nav>
+    `,
+};
