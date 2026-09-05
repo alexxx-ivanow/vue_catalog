@@ -3,7 +3,7 @@ export default {
     data() {
         return {
             items: [],
-            loading: false,
+            loading: true,
         };
     },
     mounted() {
@@ -45,17 +45,26 @@ export default {
         },
     },
     template: `
-        <nav v-if="items.length" class="breadcrumbs" aria-label="Хлебные крошки">
-            <a
-                v-for="(item, index) in items"
-                :key="item.title + '-' + index"
-                :href="item.url || null"
-                class="breadcrumbs__item"
-                :class="{ 'breadcrumbs__item--current': !item.url }"
-                :aria-current="!item.url ? 'page' : null"
-            >
-                {{ item.title }}
-            </a>
-        </nav>
+        <div class="breadcrumbs-wrap">
+            <div v-if="loading" class="breadcrumbs-placeholder" aria-hidden="true">
+                <span class="breadcrumbs-placeholder__item"></span>
+                <span class="breadcrumbs-placeholder__sep">/</span>
+                <span class="breadcrumbs-placeholder__item"></span>
+                <span class="breadcrumbs-placeholder__sep">/</span>
+                <span class="breadcrumbs-placeholder__item breadcrumbs-placeholder__item--short"></span>
+            </div>
+            <nav v-if="!loading && items.length" class="breadcrumbs" aria-label="Хлебные крошки">
+                <a
+                    v-for="(item, index) in items"
+                    :key="item.title + '-' + index"
+                    :href="item.url || null"
+                    class="breadcrumbs__item"
+                    :class="{ 'breadcrumbs__item--current': !item.url }"
+                    :aria-current="!item.url ? 'page' : null"
+                >
+                    {{ item.title }}
+                </a>
+            </nav>
+        </div>
     `,
 };

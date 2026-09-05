@@ -3,63 +3,95 @@ export default {
 
     props: {
         currentPage: { type: Number, required: true },
-        totalPages:  { type: Number, required: true },
+        totalPages: { type: Number, required: true },
+        limit: { type: Number, default: 20 },
+        sectionId: { type: Number, required: true },
     },
 
-    emits: ['change'],
-
-    setup(props, { emit }) {
-        function go(page) {
-            if (page < 1 || page > props.totalPages) return;
-            if (page === props.currentPage) return;
-            emit('change', page);
-        }
-
-        return { go };
+    emits: ['page-data'],
+    data() {
+        return {
+            loading: false,
+        };
     },
+    methods: {
+        async go(page) {
+            if (this.loading) return;
+            if (page < 1 || page > this.totalPages) return;
+            if (page === this.currentPage) return;
 
+            this.loading = true;
+            try {
+                const params = new URLSearchParams({
+                    section: String(this.sectionId),
+                    page: String(page),
+                    limit: String(this.limit),
+                });
+
+                const res = await fetch('/api/v1/catalog/goods?' + params.toString(), {
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    throw new Error(data?.error || 'Ошибка загрузки страницы');
+                }
+
+                this.$emit('page-data', data);
+            } catch (error) {
+                console.error('Ошибка ajax-пагинации: ', error);
+            } finally {
+                this.loading = false;
+            }
+        },
+    },
     template: `
-        <div v-if="totalPages > 1" class="catalog-pagination">
+        <div v-if="totalPages > 1">
+            <div v-if="loading" class="catalog-pagination-placeholder" aria-hidden="true">
+                <span class="catalog-pagination-placeholder__btn"></span>
+                <span class="catalog-pagination-placeholder__btn"></span>
+                <span class="catalog-pagination-placeholder__btn"></span>
+                <span class="catalog-pagination-placeholder__dots">...</span>
+                <span class="catalog-pagination-placeholder__btn"></span>
+            </div>
+            <div v-else class="catalog-pagination">
+                <button
+                    class="catalog-pagination__btn"
+                    :disabled="currentPage === 1"
+                    @click="go(currentPage - 1)"
+                >←</button>
 
-            <button
-                class="catalog-pagination__btn"
-                :disabled="currentPage === 1"
-                @click="go(currentPage - 1)"
-            >←</button>
+                <template v-for="page in totalPages" :key="page">
+                    <template v-if="
+                        page === 1 ||
+                        page === totalPages ||
+                        Math.abs(page - currentPage) <= 1
+                    ">
+                        <button
+                            class="catalog-pagination__btn"
+                            :class="{ 'catalog-pagination__btn--active': page === currentPage }"
+                            @click="go(page)"
+                        >{{ page }}</button>
+                    </template>
 
-            <template v-for="page in totalPages" :key="page">
-                <!-- Показываем первую, последнюю и страницы рядом с текущей -->
-                <template v-if="
-                    page === 1 ||
-                    page === totalPages ||
-                    Math.abs(page - currentPage) <= 1
-                ">
-                    <button
-                        class="catalog-pagination__btn"
-                        :class="{ 'catalog-pagination__btn--active': page === currentPage }"
-                        @click="go(page)"
-                    >{{ page }}</button>
+                    <span
+                        v-else-if="page === currentPage - 2"
+                        class="catalog-pagination__dots"
+                    >...</span>
+
+                    <span
+                        v-else-if="page === currentPage + 2"
+                        class="catalog-pagination__dots"
+                    >...</span>
                 </template>
 
-                <!-- Многоточие слева -->
-                <span
-                    v-else-if="page === currentPage - 2"
-                    class="catalog-pagination__dots"
-                >...</span>
-
-                <!-- Многоточие справа -->
-                <span
-                    v-else-if="page === currentPage + 2"
-                    class="catalog-pagination__dots"
-                >...</span>
-            </template>
-
-            <button
-                class="catalog-pagination__btn"
-                :disabled="currentPage === totalPages"
-                @click="go(currentPage + 1)"
-            >→</button>
-
+                <button
+                    class="catalog-pagination__btn"
+                    :disabled="currentPage === totalPages"
+                    @click="go(currentPage + 1)"
+                >→</button>
+            </div>
         </div>
     `,
 };

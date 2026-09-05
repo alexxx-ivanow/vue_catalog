@@ -1,6 +1,9 @@
+import AppPreloader from './AppPreloader.js';
+
 export default {
     name: 'ProductDetail',
     emits: ['add-to-cart'],
+    components: { AppPreloader },
     data() {
         return {
             product: null,
@@ -75,8 +78,6 @@ export default {
                         this.added = false;
                     }, 2000);
                 }
-
-                //this.$emit('add-to-cart', this.product);
             } catch (error) {
                 console.log('Ошибка добавления товара: ', error);
             } finally {
@@ -86,9 +87,9 @@ export default {
     },
     template: `
         <div class="catalog_list product_detail_wrap">
-            <div v-if="loading" class="catalog-page__loader">Загрузка товара...</div>
+            <AppPreloader v-if="loading" :show="true" :center-page="true" text="Загрузка товара..." />
             <div v-else-if="loadError" class="catalog-empty">{{ loadError }}</div>
-            <template v-else-if="product">
+            <template v-else>
                 <h1>{{ product.NAME }}</h1>
                 <div class="catalog_item catalog_item--detail">
                 <div class="catalog_item__link">
