@@ -33,6 +33,7 @@ export default {
                 pages: Number(pagination.pages || window.__PAGE_DATA__.section.data.pages || 1),
                 sectionId: Number(window.__PAGE_DATA__.section.id || 0),
                 items: window.__PAGE_DATA__.section.data,
+                sectionName: window.__PAGE_DATA__.section.data.sectionName,
             },
         };
     },
@@ -42,6 +43,8 @@ export default {
                 <div class="catalog-page__toolbar">
                     <span>Найдено: {{ store.total }}</span>
                 </div>
+
+                <h1 style="text-align:center;">{{ store.sectionName }}</h1>
 
                 <div class="catalog_list">
                     <ProductCard v-for="product in store.items.items" :key="product.ID" :product="product" />

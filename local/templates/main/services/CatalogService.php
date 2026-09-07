@@ -238,7 +238,7 @@ class CatalogService
 
         // Выборка страницы
         $sql = "
-        SELECT DISTINCT e.ID, e.NAME, e.CODE, e.PREVIEW_TEXT, e.DETAIL_PICTURE
+        SELECT DISTINCT e.ID, e.NAME, e.CODE, e.PREVIEW_TEXT, e.DETAIL_PICTURE, s.NAME as SECTION_NAME
         FROM b_iblock_element e
         {$sectionJoin}
         WHERE {$where}
@@ -256,6 +256,7 @@ class CatalogService
                 : '/images/no_photo.png';
             $items[]   = $row;
             $itemIds[] = (int)$row['ID'];
+            $sectionName = $row['SECTION_NAME'];
         }
 
         $prices = self::getPrices($itemIds);
@@ -268,9 +269,9 @@ class CatalogService
             $props = self::fetchProperties($itemIds);
             foreach ($items as &$item) {
                 $p = $props[(int)$item['ID']] ?? [];
-                $item['ARTICLE']      = $p['ARTICLE']      ?? '';
-                $item['MANUFACTURER'] = $p['MANUFACTURER'] ?? '';
-                $item['SIZE']         = $p['MATERIAL']     ?? '';
+                $item['ARTICLE']      = $p['CML2_ARTICLE']      ?? '';
+                $item['MANUFACTURER'] = $p['CML2_MANUFACTURER'] ?? '';
+                $item['SIZE']         = $p['SIZES']     ?? '';
             }
             unset($item);
         }
@@ -281,6 +282,7 @@ class CatalogService
             'pages' => $pages,
             'page'  => $page,
             'limit' => $limit,
+            'sectionName' => $sectionName,
         ];
 
         $cache->endDataCache($result);

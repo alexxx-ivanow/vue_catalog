@@ -34,7 +34,7 @@ $sectionPagination = is_array($sectionPagination ?? null) ? $sectionPagination :
         <div><a href="/"> Главная</a></div>
         <div><a href="/catalog/"> Каталог</a></div>
     </div>
-    <h1 style="text-align:center;">Шапка сайта</h1>
+    <h2 style="text-align:center;">Шапка сайта</h2>
 </header>
 
 <main>
