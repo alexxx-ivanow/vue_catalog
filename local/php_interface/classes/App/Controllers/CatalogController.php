@@ -39,7 +39,7 @@ class CatalogController extends BasePageController
     {
         $request = Application::getInstance()->getContext()->getRequest();
         $page = max(1, (int)$request->getQuery('page'));
-        $limit = max(1, min(48, (int)$request->getQuery('limit') ?: 4));
+        $limit = max(1, min(48, (int)$request->getQuery('limit') ?: 12));
 
         $section = CatalogService::getGoods([], $page, $limit, $id);
 

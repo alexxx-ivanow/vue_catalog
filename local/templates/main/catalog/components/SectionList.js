@@ -13,7 +13,11 @@ export default {
             this.store.limit = Number(data.limit || this.store.limit);
 
             const nextUrl = new URL(window.location.href);
-            nextUrl.searchParams.set('page', String(this.store.page));
+            if (this.store.page <= 1) {
+                nextUrl.searchParams.delete('page');
+            } else {
+                nextUrl.searchParams.set('page', String(this.store.page));
+            }
             window.history.replaceState({}, '', nextUrl.toString());
             window.scrollTo({ top: 0, behavior: 'smooth' });
         },
