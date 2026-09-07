@@ -6,6 +6,7 @@ export default {
         totalPages: { type: Number, required: true },
         limit: { type: Number, default: 20 },
         sectionId: { type: Number, required: true },
+        requestParams: { type: Object, default: () => ({}) },
     },
 
     emits: ['page-data'],
@@ -26,6 +27,20 @@ export default {
                     section: String(this.sectionId),
                     page: String(page),
                     limit: String(this.limit),
+                });
+                Object.entries(this.requestParams || {}).forEach(([key, value]) => {
+                    if (Array.isArray(value)) {
+                        value.forEach((entry) => {
+                            if (entry !== null && entry !== undefined && entry !== '') {
+                                params.append(key + '[]', String(entry));
+                            }
+                        });
+                        return;
+                    }
+
+                    if (value !== null && value !== undefined && value !== '') {
+                        params.set(key, String(value));
+                    }
                 });
 
                 const res = await fetch('/api/v1/catalog/goods?' + params.toString(), {

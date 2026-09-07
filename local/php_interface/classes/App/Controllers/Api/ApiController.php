@@ -29,12 +29,17 @@ class ApiController
     {
         $request = $this->request();
 
+        $manufacturers = $this->normalizeIntList($request->get('manufacturer') ?? $request->get('manufacturers'));
+        $sizes = $this->normalizeIntList($request->get('size') ?? $request->get('sizes'));
+        $materials = $this->normalizeStringList($request->get('material') ?? $request->get('materials'));
+
         $filter = [
             'article'      => (string)($request->get('article') ?? ''),
             'price_from'   => $request->get('price_from') !== null ? (float)$request->get('price_from') : null,
             'price_to'     => $request->get('price_to') !== null ? (float)$request->get('price_to') : null,
-            'size'         => $request->get('size') !== null ? (int)$request->get('size') : null,
-            'manufacturer' => $request->get('manufacturer') !== null ? (int)$request->get('manufacturer') : null,
+            'sizes'        => $sizes,
+            'manufacturers'=> $manufacturers,
+            'materials'    => $materials,
         ];
 
         $page  = max(1, (int)$request->get('page') ?: 1);
@@ -116,5 +121,39 @@ class ApiController
 
         //return new Json(['error' => 'Внутренняя ошибка сервера'], 500);
         return new Json(['error' => $e->getMessage()], 500);
+    }
+
+    private function normalizeIntList(mixed $value): array
+    {
+        $items = is_array($value) ? $value : [$value];
+        $result = [];
+        foreach ($items as $item) {
+            if ($item === null || $item === '') {
+                continue;
+            }
+            $intValue = (int)$item;
+            if ($intValue > 0) {
+                $result[] = $intValue;
+            }
+        }
+
+        return array_values(array_unique($result));
+    }
+
+    private function normalizeStringList(mixed $value): array
+    {
+        $items = is_array($value) ? $value : [$value];
+        $result = [];
+        foreach ($items as $item) {
+            if ($item === null) {
+                continue;
+            }
+            $str = trim((string)$item);
+            if ($str !== '') {
+                $result[] = $str;
+            }
+        }
+
+        return array_values(array_unique($result));
     }
 }

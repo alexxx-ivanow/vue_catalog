@@ -431,3 +431,46 @@ img {
     letter-spacing: 2px;
 }
 
+.catalog-layout {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+}
+
+.catalog-layout__sidebar {
+    width: 280px;
+    flex-shrink: 0;
+}
+
+.catalog-layout__content {
+    flex: 1;
+    min-width: 0;
+}
+
+.catalog-filter__label {
+    font-weight: 600;
+    color: #333;
+}
+
+.catalog-filter__check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+}
+
+.catalog-filter__price-inputs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.catalog-filter__price-inputs input {
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    background: #fff;
+    font-size: 14px;
+    width: 100%;
+    box-sizing: border-box;
+}
+

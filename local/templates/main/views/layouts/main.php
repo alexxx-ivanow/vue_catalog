@@ -8,6 +8,7 @@ $data_sections = is_array($data_sections ?? null) ? $data_sections : [];
 $data_section = is_array($data_section ?? null) ? $data_section : [];
 $data_product = is_array($data_product ?? null) ? $data_product : [];
 $sectionPagination = is_array($sectionPagination ?? null) ? $sectionPagination : [];
+$sectionFilter = is_array($sectionFilter ?? null) ? $sectionFilter : [];
 ?>
 <!DOCTYPE html>
 <html lang="ru">
@@ -76,6 +77,7 @@ $sectionPagination = is_array($sectionPagination ?? null) ? $sectionPagination :
             id: <?= $sectionId ?>,
             data: <?= json_encode($data_section, JSON_UNESCAPED_UNICODE) ?>,
             total: <?= count($data_section['items'] ?? []) ?>,
+            filter: <?= json_encode($sectionFilter, JSON_UNESCAPED_UNICODE) ?>,
             pagination: {
                 page: <?= (int)($sectionPagination['page'] ?? 1) ?>,
                 pages: <?= (int)($sectionPagination['pages'] ?? 1) ?>,
