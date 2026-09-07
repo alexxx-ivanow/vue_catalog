@@ -156,6 +156,7 @@ class CatalogService
             "e.ACTIVE = 'Y'",
         ];
         $sectionName = '';
+        $subsections = [];
 
         // Фильтр по секции через LEFT/RIGHT MARGIN — захватывает вложенные секции.
         if ($sectionId > 0) {
@@ -170,11 +171,12 @@ class CatalogService
             }
 
             $sectionName = (string)$bounds['NAME'];
+            $subsections = self::getDirectSubsections($sectionId);
             $lm = (int)$bounds['LEFT_MARGIN'];
             $rm = (int)$bounds['RIGHT_MARGIN'];
             $sectionIds = self::getSectionIdsByBounds($lm, $rm);
             if (empty($sectionIds)) {
-                $result = self::emptyResult($page, $limit, $sectionName);
+                $result = self::emptyResult($page, $limit, $sectionName, $subsections);
                 if (!$skipCache) {
                     $cache->endDataCache($result);
                 }
@@ -351,6 +353,7 @@ class CatalogService
             'page'  => $page,
             'limit' => $limit,
             'sectionName' => $sectionName,
+            'subsections' => $subsections,
         ];
 
         if ($measurePerf) {
@@ -541,20 +544,27 @@ class CatalogService
         ];
 
         if ($pageType === 'section' && $sectionId > 0) {
-            $section = self::getSectionBounds($sectionId);
-            if (!empty($section['NAME'])) {
-                $breadcrumbs[] = ['title' => $section['NAME'], 'url' => null];
+            $sectionPath = self::getSectionPath($sectionId);
+            $lastIndex = count($sectionPath) - 1;
+            foreach ($sectionPath as $index => $section) {
+                $breadcrumbs[] = [
+                    'title' => $section['NAME'],
+                    'url' => $index === $lastIndex ? null : '/catalog/section/' . (int)$section['ID'],
+                ];
             }
         }
 
         if ($pageType === 'product' && $productId > 0) {
             $product = self::getProduct($productId);
             if ($product) {
-                if (!empty($product['SECTION_ID']) && !empty($product['SECTION_NAME'])) {
-                    $breadcrumbs[] = [
-                        'title' => $product['SECTION_NAME'],
-                        'url' => '/catalog/section/' . (int)$product['SECTION_ID'],
-                    ];
+                if (!empty($product['SECTION_ID'])) {
+                    $sectionPath = self::getSectionPath((int)$product['SECTION_ID']);
+                    foreach ($sectionPath as $section) {
+                        $breadcrumbs[] = [
+                            'title' => $section['NAME'],
+                            'url' => '/catalog/section/' . (int)$section['ID'],
+                        ];
+                    }
                 }
                 $breadcrumbs[] = ['title' => $product['NAME'], 'url' => null];
             }
@@ -786,7 +796,7 @@ class CatalogService
         return $ids;
     }
 
-    private static function emptyResult(int $page, int $limit, string $sectionName = ''): array
+    private static function emptyResult(int $page, int $limit, string $sectionName = '', array $subsections = []): array
     {
         return [
             'items' => [],
@@ -795,6 +805,7 @@ class CatalogService
             'page'  => $page,
             'limit' => $limit,
             'sectionName' => $sectionName,
+            'subsections' => $subsections,
         ];
     }
 
@@ -836,5 +847,69 @@ class CatalogService
     ";
 
         return $db->query($sql)->fetch() ?: null;
+    }
+
+    private static function getDirectSubsections(int $sectionId): array
+    {
+        $db = Application::getConnection();
+        $sectionId = (int)$sectionId;
+        if ($sectionId <= 0) {
+            return [];
+        }
+
+        $sql = "
+            SELECT ID, NAME
+            FROM b_iblock_section
+            WHERE IBLOCK_ID = " . self::IBLOCK_ID . "
+              AND ACTIVE = 'Y'
+              AND IBLOCK_SECTION_ID = {$sectionId}
+            ORDER BY SORT ASC, NAME ASC
+        ";
+
+        $res = $db->query($sql);
+        $result = [];
+        while ($row = $res->fetch()) {
+            $childId = (int)$row['ID'];
+            $result[] = [
+                'ID' => $childId,
+                'NAME' => (string)$row['NAME'],
+                'URL' => '/catalog/section/' . $childId,
+            ];
+        }
+
+        return $result;
+    }
+
+    private static function getSectionPath(int $sectionId): array
+    {
+        $db = Application::getConnection();
+        $sectionId = (int)$sectionId;
+        if ($sectionId <= 0) {
+            return [];
+        }
+
+        $sql = "
+            SELECT parent.ID, parent.NAME
+            FROM b_iblock_section parent
+            JOIN b_iblock_section current_section ON current_section.ID = {$sectionId}
+            WHERE parent.IBLOCK_ID = " . self::IBLOCK_ID . "
+              AND parent.ACTIVE = 'Y'
+              AND current_section.IBLOCK_ID = " . self::IBLOCK_ID . "
+              AND current_section.ACTIVE = 'Y'
+              AND parent.LEFT_MARGIN <= current_section.LEFT_MARGIN
+              AND parent.RIGHT_MARGIN >= current_section.RIGHT_MARGIN
+            ORDER BY parent.LEFT_MARGIN ASC
+        ";
+
+        $res = $db->query($sql);
+        $path = [];
+        while ($row = $res->fetch()) {
+            $path[] = [
+                'ID' => (int)$row['ID'],
+                'NAME' => (string)$row['NAME'],
+            ];
+        }
+
+        return $path;
     }
 }

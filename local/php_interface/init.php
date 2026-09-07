@@ -9,6 +9,6 @@ Loader::registerAutoLoadClasses(null, [
     'MyApp\ApiController'  => '/local/php_interface/classes/App/Controllers/Api/ApiController.php',    
     'MyApp\ProductController'  => '/local/php_interface/classes/App/Controllers/ProductController.php',
 
-    'MyApp\CatalogService'  => '/local/templates/main/services/CatalogService.php',
-    'MyApp\CartService'  => '/local/templates/main/services/CartService.php',
+    'MyApp\CatalogService'  => '/local/php_interface/services/CatalogService.php',
+    'MyApp\CartService'  => '/local/php_interface/services/CartService.php',
 ]);

@@ -17,7 +17,7 @@ export default {
                 const sectionId = Number(
                     page.section_id ||
                     window.__PAGE_DATA__?.section?.id ||
-                    window.__PAGE_DATA__?.product?.data?.SECTION_ID ||
+                    window.__PAGE_DATA__?.product?.section_id ||
                     0
                 );
                 const productId = Number(window.__PAGE_DATA__?.product?.data?.ID || 0);

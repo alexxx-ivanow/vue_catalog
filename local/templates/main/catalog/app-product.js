@@ -6,4 +6,3 @@ const mountEl = document.getElementById('app-catalog');
 if (mountEl) {
     createApp(ProductDetail).mount(mountEl);
 }
-console.log(window.__PAGE_DATA__.product.data)

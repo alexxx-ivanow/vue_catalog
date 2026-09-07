@@ -101,6 +101,7 @@ export default {
             this.store.page = Number(data.page || 1);
             this.store.pages = Number(data.pages || 1);
             this.store.limit = Number(data.limit || this.store.limit);
+            this.store.subsections = Array.isArray(data.subsections) ? data.subsections : this.store.subsections;
 
             const nextUrl = new URL(window.location.href);
             if (this.store.page <= 1) {
@@ -148,6 +149,9 @@ export default {
                 sectionId: Number(window.__PAGE_DATA__.section.id || 0),
                 items: window.__PAGE_DATA__.section.data,
                 sectionName: window.__PAGE_DATA__.section.data.sectionName,
+                subsections: Array.isArray(window.__PAGE_DATA__.section.data.subsections)
+                    ? window.__PAGE_DATA__.section.data.subsections
+                    : [],
                 loading: false,
                 filterMeta: {
                     manufacturers: [],
@@ -179,6 +183,17 @@ export default {
                 </aside>
 
                 <section class="catalog-layout__content">
+                    <div v-if="store.subsections.length" class="section-subcategories">
+                        <a
+                            v-for="sub in store.subsections"
+                            :key="sub.ID"
+                            :href="sub.URL || ('/catalog/section/' + sub.ID)"
+                            class="section-subcategories__item"
+                        >
+                            {{ sub.NAME }}
+                        </a>
+                    </div>
+
                     <div class="catalog-page__toolbar">
                         <span>Найдено: {{ store.total }}</span>
                     </div>

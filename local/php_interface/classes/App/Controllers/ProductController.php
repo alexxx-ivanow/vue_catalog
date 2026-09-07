@@ -33,7 +33,9 @@ class ProductController extends BasePageController
             'contentView' => '/local/templates/main/views/catalog/product.php',
             'data_sections'    => [],
             'data_section'    => [],
-            'data_product'    => $product,
+            'data_product'    => [
+                'ID' => (int)$product['ID'],
+            ],
             'jsEntry' => 'app-product.js', // если страница без Vue - jsEntry не нужен
         ];
 
