@@ -1,0 +1,45 @@
+.abcwww-markers-editor__board {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  border: 1px solid #d9d9d9;
+  margin-bottom: 16px;
+}
+
+.abcwww-markers-editor__image {
+  display: block;
+  max-width: min(100%, 980px);
+  height: auto;
+}
+
+.abcwww-markers-editor__layer {
+  position: absolute;
+  inset: 0;
+}
+
+.abcwww-markers-editor__pin {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+  color: #fff;
+  background: #1e88e5;
+  line-height: 24px;
+  font-weight: 700;
+  user-select: none;
+}
+
+.abcwww-markers-editor__pin.is-dragging {
+  cursor: grabbing;
+}
+
+.abcwww-markers-editor__pin.is-linked-hover {
+  box-shadow: 0 0 0 3px rgba(30, 136, 229, 0.35);
+}
+
+#abcwww-markers-editor-table .abcwww-markers-editor__row-hover td {
+  background: #e8f2ff;
+}

@@ -1,0 +1,19 @@
+<?php
+
+$MESS['ABCWWW_MARKERS_UF_SECTION_IMAGE'] = 'Background image';
+$MESS['ABCWWW_MARKERS_UF_SECTION_COLOR'] = 'Main color';
+$MESS['ABCWWW_MARKERS_UF_SECTION_HOVER_COLOR'] = 'Hover / active color';
+$MESS['ABCWWW_MARKERS_UF_SECTION_COLOR_DATE'] = 'Main color date (datepicker)';
+$MESS['ABCWWW_MARKERS_UF_SECTION_ICON'] = 'Marker icon (SVG)';
+$MESS['ABCWWW_MARKERS_UF_SECTION_ICON_PC'] = 'Desktop icon size';
+$MESS['ABCWWW_MARKERS_UF_SECTION_ICON_MB'] = 'Mobile icon size';
+$MESS['ABCWWW_MARKERS_UF_ELEMENT_X'] = 'Coordinate X, %';
+$MESS['ABCWWW_MARKERS_UF_ELEMENT_Y'] = 'Coordinate Y, %';
+$MESS['ABCWWW_MARKERS_UF_ELEMENT_MODAL'] = 'Open modal only';
+$MESS['ABCWWW_MARKERS_UF_ELEMENT_COLOR'] = 'Marker color';
+$MESS['ABCWWW_MARKERS_UF_ELEMENT_HOVER_COLOR'] = 'Hover / active color';
+$MESS['ABCWWW_MARKERS_UF_ELEMENT_OPENED'] = 'Open by default';
+$MESS['ABCWWW_MARKERS_UF_ELEMENT_HIDE_MORE'] = 'Hide details button';
+$MESS['ABCWWW_MARKERS_UF_ELEMENT_BTN_TEXT'] = 'Product button text';
+$MESS['ABCWWW_MARKERS_UF_ELEMENT_BTN_COLOR'] = 'Product button color';
+$MESS['ABCWWW_MARKERS_UF_ELEMENT_URL'] = 'Product URL';

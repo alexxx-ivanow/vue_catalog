@@ -1,0 +1,107 @@
+.abcwww-markers {
+  position: relative;
+}
+
+.abcwww-markers__board {
+  position: relative;
+  display: inline-block;
+  width: auto;
+  max-width: 100%;
+}
+
+.abcwww-markers__image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.abcwww-markers__layer {
+  position: absolute;
+  inset: 0;
+}
+
+.abcwww-markers__item {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  color: var(--marker-color, #1E88E5);
+}
+
+.abcwww-markers__pin {
+  width: var(--marker-size-desktop, 24px);
+  height: var(--marker-size-desktop, 24px);
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  outline: none !important;
+}
+
+.abcwww-markers__pin svg,
+.abcwww-markers__icon-image,
+.abcwww-markers__icon-mask {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.abcwww-markers__icon-mask {
+  background-color: currentColor;
+  -webkit-mask-image: var(--marker-icon);
+  mask-image: var(--marker-icon);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+.abcwww-markers__item:hover,
+.abcwww-markers__item:focus-within,
+.abcwww-markers__item.is-active {
+  color: var(--marker-hover, #FF5722);
+}
+
+.abcwww-markers__tooltip {
+  display: none;
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  transform: translateX(-50%);
+  width: min(280px, 70vw);
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .15);
+  padding: 10px;
+  z-index: 4;
+}
+
+.abcwww-markers__tooltip.is-open {
+  display: block;
+}
+
+.abcwww-markers__preview-image {
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+.abcwww-markers__btn {
+  margin-top: 8px;
+  display: inline-block;
+  color: #fff;
+  border: 0;
+  text-decoration: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .abcwww-markers__pin {
+    width: var(--marker-size-mobile, 18px);
+    height: var(--marker-size-mobile, 18px);
+  }
+}
