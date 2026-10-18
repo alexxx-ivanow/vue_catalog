@@ -52,7 +52,7 @@ class ColorUserType
     {
         $default = self::normalizeColor((string)($userField['SETTINGS']['DEFAULT_VALUE'] ?? ''));
         return [
-            'DEFAULT_VALUE' => $default !== '' ? $default : self::DEFAULT_COLOR,
+            'DEFAULT_VALUE' => $default,
             'SIZE' => 10,
             'ROWS' => 1,
             'MIN_LENGTH' => 0,
@@ -71,20 +71,17 @@ class ColorUserType
         } elseif (is_array($userField)) {
             $value = self::normalizeColor((string)($userField['SETTINGS']['DEFAULT_VALUE'] ?? ''));
         } else {
-            $value = self::DEFAULT_COLOR;
+            $value = '';
         }
 
-        if ($value === '') {
-            $value = self::DEFAULT_COLOR;
-        }
-
+        $pickerValue = $value !== '' ? $value : self::DEFAULT_COLOR;
         $name = htmlspecialcharsbx((string)($arHtmlControl['NAME'] ?? 'SETTINGS') . '[DEFAULT_VALUE]');
 
         return
             '<tr><td>Значение по умолчанию:</td><td>' .
-            '<input type="color" value="' . htmlspecialcharsbx($value) . '" ' .
+            '<input type="color" value="' . htmlspecialcharsbx($pickerValue) . '" ' .
             'oninput="this.nextElementSibling.value=this.value;"> ' .
-            '<input type="text" name="' . $name . '" value="' . htmlspecialcharsbx($value) . '" size="10" maxlength="7">' .
+            '<input type="text" name="' . $name . '" value="' . htmlspecialcharsbx($value) . '" size="10" maxlength="7" placeholder="#RRGGBB">' .
             '</td></tr>';
     }
 
@@ -95,12 +92,7 @@ class ColorUserType
     public static function GetEditFormHTML($userField, $htmlControl): string
     {
         $value = self::normalizeColor((string)($htmlControl['VALUE'] ?? ''));
-        if ($value === '') {
-            $value = self::normalizeColor((string)($userField['SETTINGS']['DEFAULT_VALUE'] ?? self::DEFAULT_COLOR));
-        }
-        if ($value === '') {
-            $value = self::DEFAULT_COLOR;
-        }
+        $pickerValue = $value !== '' ? $value : self::DEFAULT_COLOR;
 
         $inputName = (string)($htmlControl['NAME'] ?? '');
         $inputId = preg_replace('/[^a-z0-9_:-]+/i', '_', $inputName);
@@ -108,11 +100,11 @@ class ColorUserType
 
         return
             '<span style="display:inline-flex;align-items:center;gap:8px;">' .
-                '<input type="color" value="' . htmlspecialcharsbx($value) . '" ' .
+                '<input type="color" value="' . htmlspecialcharsbx($pickerValue) . '" ' .
                     'oninput="document.getElementById(\'' . htmlspecialcharsbx($inputId) . '\').value=this.value;">' .
                 '<input type="text" id="' . htmlspecialcharsbx($inputId) . '" name="' . htmlspecialcharsbx($inputName) . '" ' .
-                    'value="' . htmlspecialcharsbx($value) . '" size="10" maxlength="7" ' .
-                    'oninput="if(/^#[0-9A-Fa-f]{6}$/.test(this.value)){this.previousElementSibling.value=this.value;}">' .
+                    'value="' . htmlspecialcharsbx($value) . '" size="10" maxlength="7" placeholder="#RRGGBB" ' .
+                    'oninput="if(this.value===\'\'||/^#[0-9A-Fa-f]{6}$/.test(this.value)){if(/^#[0-9A-Fa-f]{6}$/.test(this.value)){this.previousElementSibling.value=this.value;}}">' .
             '</span>';
     }
 

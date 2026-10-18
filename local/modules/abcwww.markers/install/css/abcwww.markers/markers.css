@@ -22,11 +22,23 @@
 
 .abcwww-markers__item {
   position: absolute;
+  z-index: 1;
   transform: translate(-50%, -100%);
   color: var(--marker-color, #1E88E5);
 }
 
+.abcwww-markers__item.is-natural {
+  color: inherit;
+}
+
+.abcwww-markers__item.is-active,
+.abcwww-markers__item.is-open-front {
+  z-index: 50;
+}
+
 .abcwww-markers__pin {
+  position: relative;
+  z-index: 1;
   width: var(--marker-size-desktop, 24px);
   height: var(--marker-size-desktop, 24px);
   border: 0;
@@ -45,6 +57,11 @@
   display: block;
 }
 
+.abcwww-markers__icon-image {
+  object-fit: contain;
+  pointer-events: none;
+}
+
 .abcwww-markers__icon-mask {
   background-color: currentColor;
   -webkit-mask-image: var(--marker-icon);
@@ -57,9 +74,9 @@
   mask-size: contain;
 }
 
-.abcwww-markers__item:hover,
-.abcwww-markers__item:focus-within,
-.abcwww-markers__item.is-active {
+.abcwww-markers__item:not(.is-natural):hover,
+.abcwww-markers__item:not(.is-natural):focus-within,
+.abcwww-markers__item:not(.is-natural).is-active {
   color: var(--marker-hover, #FF5722);
 }
 
@@ -75,7 +92,7 @@
   border-radius: 3px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, .15);
   padding: 10px;
-  z-index: 4;
+  z-index: 60;
 }
 
 .abcwww-markers__tooltip.is-open {
@@ -99,9 +116,93 @@
   cursor: pointer;
 }
 
+.abcwww-markers__modal-source {
+  display: none !important;
+}
+
+/* ---------- Modal ---------- */
+
+.abcwww-markers-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.abcwww-markers-modal.is-open {
+  display: flex;
+}
+
+.abcwww-markers-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, .45);
+}
+
+.abcwww-markers-modal__dialog {
+  position: relative;
+  z-index: 1;
+  width: 500px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .25);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.abcwww-markers-modal__close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #333;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.abcwww-markers-modal__close:hover {
+  background: rgba(0, 0, 0, .06);
+}
+
+.abcwww-markers-modal__body {
+  padding: 20px 44px 20px 20px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.abcwww-markers-modal__body h4,
+.abcwww-markers-modal__body h5 {
+  margin: 0 0 12px;
+  padding-right: 8px;
+}
+
+.abcwww-markers-modal__body img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin-bottom: 12px;
+}
+
 @media (max-width: 768px) {
   .abcwww-markers__pin {
     width: var(--marker-size-mobile, 18px);
     height: var(--marker-size-mobile, 18px);
+  }
+
+  .abcwww-markers-modal__dialog {
+    width: 100%;
   }
 }

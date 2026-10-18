@@ -6,16 +6,28 @@ class Sanitizer
 {
     public static function color(?string $value, string $fallback): string
     {
+        $normalized = self::normalizeColor($value);
+        return $normalized !== '' ? $normalized : $fallback;
+    }
+
+    /** Возвращает нормализованный цвет или пустую строку (без fallback). */
+    public static function normalizeColor(?string $value): string
+    {
         $value = trim((string)$value);
         if ($value === '') {
-            return $fallback;
+            return '';
         }
 
-        if (preg_match('/^#([0-9a-f]{3}|[0-9a-f]{6})$/i', $value)) {
-            return strtoupper($value);
+        if (!preg_match('/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i', $value, $m)) {
+            return '';
         }
 
-        return $fallback;
+        $hex = strtoupper($m[1]);
+        if (strlen($hex) === 3) {
+            $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+        }
+
+        return '#' . $hex;
     }
 
     public static function html(?string $html): string

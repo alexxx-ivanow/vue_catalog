@@ -29,6 +29,74 @@ class Repository
         return $result;
     }
 
+    /** @return array<string,string> */
+    public static function getIblockTypes(): array
+    {
+        if (!Loader::includeModule('iblock')) {
+            return [];
+        }
+
+        $result = [];
+        $res = \CIBlockType::GetList(['SORT' => 'ASC', 'NAME' => 'ASC']);
+        while ($row = $res->Fetch()) {
+            $typeId = (string)($row['ID'] ?? '');
+            if ($typeId === '') {
+                continue;
+            }
+            $lang = \CIBlockType::GetByIDLang($typeId, LANGUAGE_ID);
+            $name = is_array($lang) ? (string)($lang['NAME'] ?? $typeId) : $typeId;
+            $result[$typeId] = $name . ' [' . $typeId . ']';
+        }
+
+        return $result;
+    }
+
+    /** @return array<int,string> */
+    public static function getIblocksByType(string $iblockTypeId): array
+    {
+        if ($iblockTypeId === '' || !Loader::includeModule('iblock')) {
+            return [];
+        }
+
+        $result = [];
+        $res = \CIBlock::GetList(
+            ['SORT' => 'ASC', 'NAME' => 'ASC'],
+            ['TYPE' => $iblockTypeId, 'ACTIVE' => 'Y', 'CHECK_PERMISSIONS' => 'N']
+        );
+        while ($row = $res->Fetch()) {
+            $id = (int)($row['ID'] ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+            $result[$id] = '[' . $id . '] ' . (string)$row['NAME'];
+        }
+
+        return $result;
+    }
+
+    /** @return array<string,string> CODE => label */
+    public static function getElementPropertyCodes(int $iblockId): array
+    {
+        if ($iblockId <= 0 || !Loader::includeModule('iblock')) {
+            return [];
+        }
+
+        $result = [];
+        $res = \CIBlockProperty::GetList(
+            ['SORT' => 'ASC', 'NAME' => 'ASC'],
+            ['IBLOCK_ID' => $iblockId, 'ACTIVE' => 'Y']
+        );
+        while ($row = $res->Fetch()) {
+            $code = trim((string)($row['CODE'] ?? ''));
+            if ($code === '') {
+                continue;
+            }
+            $result[$code] = '[' . $code . '] ' . (string)$row['NAME'];
+        }
+
+        return $result;
+    }
+
     public static function getScheme(
         int $iblockId,
         int $sectionId,
@@ -38,7 +106,8 @@ class Repository
         string $sortOrder2 = 'DESC',
         string $moreButtonPropertyCode = '',
         string $buttonTextPropertyCode = 'ABCWWW_BUTTON_TEXT',
-        bool $showTooltip = false
+        bool $showTooltip = false,
+        array $additionalPropertyCodes = []
     ): ?array
     {
         if ($iblockId <= 0 || $sectionId <= 0 || !Loader::includeModule('iblock')) {
@@ -61,19 +130,29 @@ class Repository
         $iconPcRaw = $sectionUfs['UF_MARKER_ICON_PC'] ?? ($section['UF_MARKER_ICON_PC'] ?? 24);
         $iconMbRaw = $sectionUfs['UF_MARKER_ICON_MB'] ?? ($section['UF_MARKER_ICON_MB'] ?? 18);
 
-        $mainColor = Sanitizer::color((string)$mainColorRaw, '#1E88E5');
+        $icon = self::filePath((int)$iconRaw);
+        $mainColor = Sanitizer::normalizeColor((string)$mainColorRaw);
+        $hoverColor = Sanitizer::normalizeColor((string)$hoverColorRaw);
+        // Своя SVG без цветов — без тонировки mask/currentColor, чтобы не портить сложную графику.
+        $colorizeIcons = ($icon === '') || ($mainColor !== '') || ($hoverColor !== '');
+        if ($colorizeIcons) {
+            $mainColor = $mainColor !== '' ? $mainColor : '#1E88E5';
+            $hoverColor = $hoverColor !== '' ? $hoverColor : '#FF5722';
+        }
+
         $scheme = [
             'id' => (int)$section['ID'],
             'name' => (string)$section['NAME'],
             'iblockType' => self::getIblockType($iblockId),
             'image' => self::filePath((int)($section['UF_MARKER_IMAGE'] ?? 0)),
             'mainColor' => $mainColor,
-            'activeColor' => Sanitizer::color((string)$hoverColorRaw, '#FF5722'),
-            'icon' => self::filePath((int)$iconRaw),
+            'activeColor' => $hoverColor,
+            'icon' => $icon,
+            'colorizeIcons' => $colorizeIcons,
             'iconPc' => max(8, (int)$iconPcRaw),
             'iconMobile' => max(8, (int)$iconMbRaw),
             'showTooltipAlways' => $showTooltip,
-            'snippet' => '<div data-wnfgr="markers" data-id="' . (int)$section['ID'] . '" data-iblock-id="' . (int)$iblockId . '"></div>',
+            'snippet' => '<div data-abcwww-snippet="markers" data-id="' . (int)$section['ID'] . '" data-iblock-id="' . (int)$iblockId . '"></div>',
         ];
 
         $scheme['markers'] = self::getMarkers(
@@ -86,7 +165,8 @@ class Repository
             $sortOrder2,
             $moreButtonPropertyCode,
             $buttonTextPropertyCode,
-            $showTooltip
+            $showTooltip,
+            $additionalPropertyCodes
         );
         return $scheme;
     }
@@ -199,7 +279,8 @@ class Repository
         string $sortOrder2 = 'DESC',
         string $moreButtonPropertyCode = '',
         string $buttonTextPropertyCode = 'ABCWWW_BUTTON_TEXT',
-        bool $showTooltip = false
+        bool $showTooltip = false,
+        array $additionalPropertyCodes = []
     ): array
     {
         $markers = [];
@@ -209,6 +290,7 @@ class Repository
         $sortOrder1 = in_array(strtoupper($sortOrder1), $allowedOrders, true) ? strtoupper($sortOrder1) : 'ASC';
         $sortBy2 = in_array(strtoupper($sortBy2), $allowedFields, true) ? strtoupper($sortBy2) : 'ID';
         $sortOrder2 = in_array(strtoupper($sortOrder2), $allowedOrders, true) ? strtoupper($sortOrder2) : 'DESC';
+        $propertyCodes = self::normalizePropertyCodes($additionalPropertyCodes);
         $res = \CIBlockElement::GetList(
             [$sortBy1 => $sortOrder1, $sortBy2 => $sortOrder2],
             ['IBLOCK_ID' => $iblockId, 'SECTION_ID' => $sectionId, 'ACTIVE' => 'Y', 'INCLUDE_SUBSECTIONS' => 'N'],
@@ -216,6 +298,7 @@ class Repository
             false,
             [
                 'ID', 'IBLOCK_ID', 'NAME', 'CODE', 'PREVIEW_TEXT', 'PREVIEW_PICTURE',
+                'DETAIL_TEXT', 'DETAIL_PICTURE',
                 'UF_MARKER_X', 'UF_MARKER_Y', 'UF_MARKER_COLOR',
                 'UF_MARKER_OPENED', 'UF_MARKER_BTN_COLOR'
             ]
@@ -232,7 +315,11 @@ class Repository
             $buttonText = self::resolveButtonText($iblockId, (int)$row['ID'], $buttonTextPropertyCode);
 
             $previewText = Sanitizer::html($row['PREVIEW_TEXT'] ?? '');
+            $detailText = Sanitizer::html($row['DETAIL_TEXT'] ?? '');
             $showMoreButton = $moreContent !== '';
+            $pinColor = !empty($scheme['colorizeIcons'])
+                ? Sanitizer::color((string)$markerColor, (string)$scheme['mainColor'])
+                : '';
 
             $markers[] = [
                 'id' => (int)$row['ID'],
@@ -240,19 +327,108 @@ class Repository
                 'x' => Sanitizer::percent($markerX),
                 'y' => Sanitizer::percent($markerY),
                 'opened' => $showTooltip || (int)$opened === 1,
-                'color' => Sanitizer::color((string)$markerColor, $scheme['mainColor']),
-                'hoverColor' => $scheme['activeColor'],
+                'color' => $pinColor,
+                'hoverColor' => !empty($scheme['colorizeIcons']) ? (string)$scheme['activeColor'] : '',
                 'previewImage' => self::filePath((int)($row['PREVIEW_PICTURE'] ?? 0)),
                 'previewText' => $previewText,
+                'detailImage' => self::filePath((int)($row['DETAIL_PICTURE'] ?? 0)),
+                'detailText' => $detailText !== '' ? $detailText : $previewText,
                 'showMoreButton' => $showMoreButton,
                 'buttonText' => $buttonText,
-                'buttonColor' => Sanitizer::color((string)$btnColorRaw, $scheme['mainColor']),
+                'buttonColor' => Sanitizer::color(
+                    (string)$btnColorRaw,
+                    (string)($scheme['mainColor'] !== '' ? $scheme['mainColor'] : '#1E88E5')
+                ),
                 'productUrl' => $moreContent,
+                'properties' => self::getElementPropertiesByCodes($iblockId, (int)$row['ID'], $propertyCodes),
                 'editUrl' => self::buildElementEditUrl($iblockId, $sectionId, (int)$row['ID'], (string)($scheme['iblockType'] ?? '')),
             ];
         }
 
         return $markers;
+    }
+
+    /** @param mixed $codes */
+    private static function normalizePropertyCodes($codes): array
+    {
+        if (!is_array($codes)) {
+            $codes = [$codes];
+        }
+
+        $result = [];
+        foreach ($codes as $code) {
+            $code = trim((string)$code);
+            if ($code === '' || isset($result[$code])) {
+                continue;
+            }
+            $result[$code] = $code;
+        }
+
+        return array_values($result);
+    }
+
+    /**
+     * @param string[] $propertyCodes
+     * @return array<string, mixed>
+     */
+    private static function getElementPropertiesByCodes(int $iblockId, int $elementId, array $propertyCodes): array
+    {
+        if ($iblockId <= 0 || $elementId <= 0 || empty($propertyCodes)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($propertyCodes as $code) {
+            $result[$code] = self::getElementPropertyRawByCode($iblockId, $elementId, $code);
+        }
+
+        return $result;
+    }
+
+    /** @return mixed */
+    private static function getElementPropertyRawByCode(int $iblockId, int $elementId, string $propertyCode)
+    {
+        $propertyCode = trim($propertyCode);
+        if ($propertyCode === '') {
+            return null;
+        }
+
+        $res = \CIBlockElement::GetProperty(
+            $iblockId,
+            $elementId,
+            ['sort' => 'asc'],
+            ['CODE' => $propertyCode]
+        );
+
+        $values = [];
+        $isMultiple = false;
+        $propertyType = 'S';
+        while ($prop = $res->Fetch()) {
+            $isMultiple = (($prop['MULTIPLE'] ?? 'N') === 'Y');
+            $propertyType = (string)($prop['PROPERTY_TYPE'] ?? 'S');
+            $value = $prop['VALUE'] ?? null;
+
+            if ($propertyType === 'F') {
+                $fileId = (int)$value;
+                $values[] = $fileId > 0 ? [
+                    'ID' => $fileId,
+                    'SRC' => self::filePath($fileId),
+                ] : null;
+                continue;
+            }
+
+            if (is_array($value)) {
+                $values[] = $value;
+            } else {
+                $values[] = $value;
+            }
+        }
+
+        if ($isMultiple) {
+            return $values;
+        }
+
+        return $values[0] ?? null;
     }
 
     private static function updateMarkerUfs(int $elementId, array $fields): void

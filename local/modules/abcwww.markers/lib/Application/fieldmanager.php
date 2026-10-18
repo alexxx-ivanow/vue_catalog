@@ -269,7 +269,7 @@ class FieldManager
         }
         if ($userType === ColorUserType::USER_TYPE_ID) {
             return [
-                'DEFAULT_VALUE' => '#1E88E5',
+                'DEFAULT_VALUE' => '',
                 'SIZE' => 10,
                 'ROWS' => 1,
                 'MIN_LENGTH' => 0,

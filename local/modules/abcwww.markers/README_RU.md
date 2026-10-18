@@ -51,7 +51,7 @@
 
 - `IBLOCK_ID` — ID служебного инфоблока с картами/метками;
 - `ENABLE_SNIPPET_AUTO_INIT` — включение автоинициализации сниппета:
-  - `<div data-wnfgr="markers" data-id="{SECTION_ID}" data-iblock-id="{IBLOCK_ID}"></div>`;
+  - `<div data-abcwww-snippet="markers" data-id="{SECTION_ID}" data-iblock-id="{IBLOCK_ID}"></div>`;
 - кнопка `Создать/обновить UF-поля` — создаёт необходимые UF-поля для выбранного `IBLOCK_ID`.
 
 ---
@@ -102,7 +102,7 @@ $APPLICATION->IncludeComponent(
 ### Вариант B: HTML-сниппет
 
 ```html
-<div data-wnfgr="markers" data-id="123" data-iblock-id="2"></div>
+<div data-abcwww-snippet="markers" data-id="123" data-iblock-id="2"></div>
 ```
 
 Если включён `ENABLE_SNIPPET_AUTO_INIT`, модуль сам найдёт такие блоки и отрисует метки.

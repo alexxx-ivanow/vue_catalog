@@ -9,7 +9,7 @@ MVP module for interactive markers on image in Bitrix.
 - Visual editor page in admin section:
   - `/bitrix/admin/abcwww_markers_editor.php`
 - Data-attribute render mode:
-  - `<div data-wnfgr="markers" data-id="{SECTION_ID}" data-iblock-id="{IBLOCK_ID}"></div>`
+  - `<div data-abcwww-snippet="markers" data-id="{SECTION_ID}" data-iblock-id="{IBLOCK_ID}"></div>`
 
 ## Data model
 

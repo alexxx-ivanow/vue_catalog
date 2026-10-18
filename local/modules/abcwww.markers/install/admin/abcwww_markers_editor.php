@@ -63,5 +63,5 @@ if (!$scheme) {
     }
 </style>
 <script src="/bitrix/js/<?= \Abcwww\Markers\Options::MODULE_ID ?>/editor.js"></script>
-<?php
+<?
 require $_SERVER['DOCUMENT_ROOT'] . '/bitrix/modules/main/include/epilog_admin.php';

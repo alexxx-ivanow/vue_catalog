@@ -48,7 +48,7 @@ $APPLICATION->IncludeComponent(
 ### Вариант B: через сниппет
 
 ```html
-<div data-wnfgr="markers" data-id="123" data-iblock-id="2"></div>
+<div data-abcwww-snippet="markers" data-id="123" data-iblock-id="2"></div>
 ```
 
 Если в настройках включена автоинициализация, модуль сам отрисует схему.

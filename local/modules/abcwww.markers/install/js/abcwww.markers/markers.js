@@ -1,15 +1,10 @@
 /**
  * AbcwwwMarkers — интерактивные маркеры поверх изображения.
- * Рефакторинг: все свободные функции собраны в один объект с методами.
  */
 (function (window, document) {
   'use strict';
 
   var AbcwwwMarkers = {
-
-    /* ------------------------------------------------------------------ */
-    /* Конфигурация                                                        */
-    /* ------------------------------------------------------------------ */
 
     DEBUG: false,
 
@@ -20,9 +15,8 @@
       activeColor: '#FF5722',
       tooltipMargin: 8,
       hoverCloseDelay: 120,
-      // previewText приходит из админки как HTML. Если источник недоверенный —
-      // поставьте false, тогда текст будет экранирован.
-      allowPreviewHtml: true
+      allowPreviewHtml: true,
+      modalWidth: 500
     },
 
     SEL: {
@@ -38,14 +32,11 @@
 
     AJAX_URL: '/bitrix/tools/abcwww.markers/ajax.php',
 
-    /** Активные экземпляры: { root, image, observer, onImageLoad } */
     instances: [],
-
     globalBound: false,
-
-    /* ------------------------------------------------------------------ */
-    /* Утилиты                                                             */
-    /* ------------------------------------------------------------------ */
+    modalEl: null,
+    modalMarker: null,
+    _refreshPending: false,
 
     log: function (label, payload) {
       if (!this.DEBUG || !window.console) return;
@@ -67,10 +58,6 @@
         .replace(/'/g, '&#39;');
     },
 
-    /**
-     * Отсекает javascript:/vbscript:/data: и прочие опасные схемы.
-     * Относительные пути пропускаются как есть.
-     */
     safeUrl: function (value, allowDataImage) {
       var url = String(value == null ? '' : value)
         .replace(/[\u0000-\u001F\u007F]/g, '')
@@ -96,10 +83,6 @@
       return Math.min(Math.max(value, min), max);
     },
 
-    /* ------------------------------------------------------------------ */
-    /* Разметка                                                            */
-    /* ------------------------------------------------------------------ */
-
     iconSvg: function () {
       return '<svg viewBox="0 0 24 24" aria-hidden="true">' +
         '<path fill="currentColor" d="M12 2c-4.1 0-7.5 3.3-7.5 7.4 0 5.1 6.3 11.8 7.1 12.5.2.2.6.2.8 0 ' +
@@ -109,9 +92,20 @@
     iconMask: function (url) {
       var safe = this.safeUrl(url, true);
       if (!safe) return this.iconSvg();
-      // кавычки уже экранированы, url() не разорвать
       return '<span class="abcwww-markers__icon-mask" style="--marker-icon:url(&quot;' +
         this.escapeHtml(safe) + '&quot;);"></span>';
+    },
+
+    iconImage: function (url) {
+      var safe = this.safeUrl(url, true);
+      if (!safe) return this.iconSvg();
+      return '<img class="abcwww-markers__icon-image" src="' + this.escapeHtml(safe) + '" alt="" loading="lazy">';
+    },
+
+    buildIconHtml: function (data) {
+      if (!data.icon) return this.iconSvg();
+      if (data.colorizeIcons === false) return this.iconImage(data.icon);
+      return this.iconMask(data.icon);
     },
 
     buildButton: function (marker, data) {
@@ -128,50 +122,77 @@
       return '<span class="abcwww-markers__btn" style="background:' + color + '">' + text + '</span>';
     },
 
-    buildTooltip: function (marker, data) {
-      var preview = '';
+    buildContentHtml: function (marker, data, forModal) {
+      var html = '';
+      var image = this.safeUrl(forModal ? (marker.detailImage || marker.previewImage) : marker.previewImage, true);
+      var text = forModal ? (marker.detailText || marker.previewText) : marker.previewText;
 
-      var previewImage = this.safeUrl(marker.previewImage, true);
-      if (previewImage) {
-        preview += '<img class="abcwww-markers__preview-image" src="' +
-          this.escapeHtml(previewImage) + '" alt="" loading="lazy">';
+      if (image) {
+        html += '<img class="abcwww-markers__preview-image" src="' +
+          this.escapeHtml(image) + '" alt="" loading="lazy">';
       }
-      if (marker.previewText) {
-        preview += '<div class="abcwww-markers__preview-text">' +
-          (this.DEFAULTS.allowPreviewHtml ? marker.previewText : this.escapeHtml(marker.previewText)) +
+      if (text) {
+        html += '<div class="abcwww-markers__preview-text">' +
+          (this.DEFAULTS.allowPreviewHtml ? text : this.escapeHtml(text)) +
           '</div>';
       }
+      html += this.buildButton(marker, data);
+      return html;
+    },
 
+    buildTooltip: function (marker, data) {
       var tooltipClass = 'abcwww-markers__tooltip' + (marker.opened ? ' is-open' : '');
       return '<div class="' + tooltipClass + '" role="dialog">' +
         '<h4>' + this.escapeHtml(marker.name || '') + '</h4>' +
-        preview + this.buildButton(marker, data) + '</div>';
+        this.buildContentHtml(marker, data, false) + '</div>';
+    },
+
+    buildModalSource: function (marker, data) {
+      return '<div class="abcwww-markers__modal-source" hidden>' +
+        '<h4>' + this.escapeHtml(marker.name || '') + '</h4>' +
+        this.buildContentHtml(marker, data, true) +
+        '</div>';
+    },
+
+    buildModalShell: function () {
+      return '<div class="abcwww-markers-modal" aria-hidden="true" hidden>' +
+        '<div class="abcwww-markers-modal__backdrop" data-modal-close="Y"></div>' +
+        '<div class="abcwww-markers-modal__dialog" role="dialog" aria-modal="true">' +
+          '<button type="button" class="abcwww-markers-modal__close" data-modal-close="Y" aria-label="Close">&times;</button>' +
+          '<div class="abcwww-markers-modal__body"></div>' +
+        '</div>' +
+      '</div>';
     },
 
     buildItem: function (marker, data) {
       var item = document.createElement('div');
-      item.className = 'abcwww-markers__item';
+      var colorize = data.colorizeIcons !== false;
+      item.className = 'abcwww-markers__item' + (colorize ? '' : ' is-natural');
       item.setAttribute('data-marker-id', String(marker.id == null ? '' : marker.id));
       item.style.left = this.clamp(this.toNumber(marker.x, 0), 0, 100) + '%';
       item.style.top = this.clamp(this.toNumber(marker.y, 0), 0, 100) + '%';
-      item.style.setProperty('--marker-color', marker.color || data.mainColor || this.DEFAULTS.mainColor);
-      item.style.setProperty('--marker-hover', marker.hoverColor || data.activeColor || this.DEFAULTS.activeColor);
-      if (marker.opened) {
+
+      if (colorize) {
+        item.style.setProperty('--marker-color', marker.color || data.mainColor || this.DEFAULTS.mainColor);
+        item.style.setProperty('--marker-hover', marker.hoverColor || data.activeColor || this.DEFAULTS.activeColor);
+      }
+      if (marker.opened && !data.useModal) {
         item.classList.add('is-active');
       }
 
-      var icon = data.icon ? this.iconMask(data.icon) : this.iconSvg();
-      item.innerHTML =
+      var html =
         '<button type="button" class="abcwww-markers__pin" aria-expanded="false" aria-label="' +
-        this.escapeHtml(marker.name || '') + '">' + icon + '</button>' +
-        this.buildTooltip(marker, data);
+        this.escapeHtml(marker.name || '') + '">' + this.buildIconHtml(data) + '</button>';
 
+      if (data.useModal) {
+        html += this.buildModalSource(marker, data);
+      } else {
+        html += this.buildTooltip(marker, data);
+      }
+
+      item.innerHTML = html;
       return item;
     },
-
-    /* ------------------------------------------------------------------ */
-    /* Рендер                                                              */
-    /* ------------------------------------------------------------------ */
 
     render: function (target, data) {
       if (!target || !data) return;
@@ -179,7 +200,6 @@
       var image = this.safeUrl(data.image, true);
       if (!image) return;
 
-      // если в контейнере уже был экземпляр — снимаем его слушатели
       this.destroy(target.querySelector(this.SEL.root));
 
       var sizeStyle =
@@ -193,7 +213,8 @@
               '" alt="' + this.escapeHtml(data.name || '') + '">' +
             '<div class="abcwww-markers__layer"></div>' +
           '</div>' +
-        '</div>';
+        '</div>' +
+        (data.useModal ? this.buildModalShell() : '');
 
       var layer = target.querySelector(this.SEL.layer);
       if (!layer) return;
@@ -208,10 +229,6 @@
       this.hydrate(target, data);
     },
 
-    /* ------------------------------------------------------------------ */
-    /* Геометрия                                                           */
-    /* ------------------------------------------------------------------ */
-
     syncLayerGeometry: function (root) {
       if (!root) return;
       var board = root.querySelector(this.SEL.board);
@@ -223,23 +240,8 @@
       layer.style.top = image.offsetTop + 'px';
       layer.style.width = image.clientWidth + 'px';
       layer.style.height = image.clientHeight + 'px';
-
-      this.log('syncLayerGeometry', {
-        board: { offsetWidth: board.offsetWidth, offsetHeight: board.offsetHeight },
-        image: {
-          offsetLeft: image.offsetLeft,
-          offsetTop: image.offsetTop,
-          clientWidth: image.clientWidth,
-          clientHeight: image.clientHeight,
-          naturalWidth: image.naturalWidth || 0,
-          naturalHeight: image.naturalHeight || 0,
-          complete: !!image.complete
-        },
-        layer: { left: layer.style.left, top: layer.style.top, width: layer.style.width, height: layer.style.height }
-      });
     },
 
-    /** Пересчёт позиции открытых тултипов (после resize/scroll). */
     refresh: function (root) {
       if (!root) return;
       var self = this;
@@ -294,14 +296,22 @@
       if (!wasOpen) tooltip.classList.remove('is-open');
     },
 
-    /* ------------------------------------------------------------------ */
-    /* Тултипы                                                             */
-    /* ------------------------------------------------------------------ */
+    bringItemFront: function (item) {
+      if (!item) return;
+      var root = item.closest(this.SEL.root);
+      if (root) {
+        root.querySelectorAll(this.SEL.item).forEach(function (node) {
+          node.classList.remove('is-open-front');
+        });
+      }
+      item.classList.add('is-open-front');
+    },
 
     openTooltip: function (item) {
       var pin = item.querySelector(this.SEL.pin);
       var tooltip = item.querySelector(this.SEL.tooltip);
       if (!pin || !tooltip) return;
+      this.bringItemFront(item);
       this.applyTooltipPlacement(item, pin, tooltip);
       tooltip.classList.add('is-open');
       item.classList.add('is-active');
@@ -313,6 +323,7 @@
       var tooltip = item.querySelector(this.SEL.tooltip);
       if (tooltip) tooltip.classList.remove('is-open');
       item.classList.remove('is-active');
+      item.classList.remove('is-open-front');
       if (pin) pin.setAttribute('aria-expanded', 'false');
     },
 
@@ -321,14 +332,12 @@
       return !!tooltip && tooltip.classList.contains('is-open');
     },
 
-    /** Отмена отложенного закрытия (состояние хранится на самом элементе). */
     cancelClose: function (item) {
       if (!item || !item._markersCloseTimer) return;
       clearTimeout(item._markersCloseTimer);
       item._markersCloseTimer = null;
     },
 
-    /** Отложенное закрытие — даёт увести курсор с пина на тултип. */
     scheduleClose: function (item) {
       if (!item) return;
       var self = this;
@@ -352,7 +361,127 @@
     },
 
     /* ------------------------------------------------------------------ */
-    /* Инициализация экземпляра                                            */
+    /* Modal                                                               */
+    /* ------------------------------------------------------------------ */
+
+    findModalRoot: function (fromNode) {
+      if (!fromNode || !fromNode.closest) return null;
+      return fromNode.closest('.abcwww-markers-root') || fromNode.closest(this.SEL.root) || fromNode;
+    },
+
+    bindModalEvents: function (el) {
+      if (!el || el.dataset.modalBound === 'Y') return;
+      el.dataset.modalBound = 'Y';
+
+      var self = this;
+      el.addEventListener('click', function (event) {
+        var target = event.target;
+        if (!target) return;
+        if (target.getAttribute && target.getAttribute('data-modal-close') === 'Y') {
+          self.closeModal(el);
+          return;
+        }
+        if (typeof target.closest === 'function' && target.closest('[data-modal-close="Y"]')) {
+          self.closeModal(el);
+        }
+      });
+
+      var dialog = el.querySelector('.abcwww-markers-modal__dialog');
+      if (dialog) {
+        dialog.addEventListener('click', function (event) {
+          var target = event.target;
+          if (target && (
+            (target.getAttribute && target.getAttribute('data-modal-close') === 'Y') ||
+            (typeof target.closest === 'function' && target.closest('[data-modal-close="Y"]'))
+          )) {
+            return;
+          }
+          event.stopPropagation();
+        });
+      }
+
+      var closeBtn = el.querySelector('.abcwww-markers-modal__close');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          self.closeModal(el);
+        });
+      }
+    },
+
+    ensureModal: function (fromNode) {
+      var scope = this.findModalRoot(fromNode);
+      var el = scope ? scope.querySelector('.abcwww-markers-modal') : null;
+
+      if (!el) {
+        if (this.modalEl && document.body.contains(this.modalEl)) {
+          el = this.modalEl;
+        } else {
+          el = document.createElement('div');
+          el.className = 'abcwww-markers-modal';
+          el.setAttribute('aria-hidden', 'true');
+          el.hidden = true;
+          el.innerHTML =
+            '<div class="abcwww-markers-modal__backdrop" data-modal-close="Y"></div>' +
+            '<div class="abcwww-markers-modal__dialog" role="dialog" aria-modal="true">' +
+              '<button type="button" class="abcwww-markers-modal__close" data-modal-close="Y" aria-label="Close">&times;</button>' +
+              '<div class="abcwww-markers-modal__body"></div>' +
+            '</div>';
+          document.body.appendChild(el);
+          this.modalEl = el;
+        }
+      }
+
+      this.bindModalEvents(el);
+      this.modalEl = el;
+      return el;
+    },
+
+    openModal: function (item, marker, data) {
+      var el = this.ensureModal(item || null);
+      var body = el.querySelector('.abcwww-markers-modal__body');
+      var dialog = el.querySelector('.abcwww-markers-modal__dialog');
+      if (!body || !dialog) return;
+
+      dialog.style.width = this.DEFAULTS.modalWidth + 'px';
+
+      var source = item && item.querySelector
+        ? item.querySelector('.abcwww-markers__modal-source')
+        : null;
+
+      if (source) {
+        // Берём разметку из шаблона компонента.
+        body.innerHTML = source.innerHTML;
+      } else {
+        body.innerHTML =
+          '<h4>' + this.escapeHtml(marker.name || '') + '</h4>' +
+          this.buildContentHtml(marker, data, true);
+      }
+
+      this.modalMarker = marker;
+      el.hidden = false;
+      el.classList.add('is-open');
+      el.setAttribute('aria-hidden', 'false');
+      document.documentElement.style.overflow = 'hidden';
+    },
+
+    closeModal: function (modalEl) {
+      var el = modalEl || this.modalEl;
+      if (!el) return;
+      el.classList.remove('is-open');
+      el.hidden = true;
+      el.setAttribute('aria-hidden', 'true');
+      this.modalMarker = null;
+      document.documentElement.style.overflow = '';
+    },
+
+    isModalOpen: function () {
+      return !!(this.modalEl && this.modalEl.classList.contains('is-open'));
+    },
+
+    /* ------------------------------------------------------------------ */
+    /* Init                                                                */
     /* ------------------------------------------------------------------ */
 
     hydrate: function (target, data) {
@@ -366,9 +495,11 @@
       this.trackInstance(root);
 
       var self = this;
+      var useModal = !!data.useModal;
       var tooltipOnHover = !!data.tooltipOnHover;
-      var showTooltipAlways = !!data.showTooltipAlways;
+      var showTooltipAlways = !useModal && !!data.showTooltipAlways;
       root.dataset.tooltipAlways = showTooltipAlways ? 'Y' : 'N';
+      root.dataset.useModal = useModal ? 'Y' : 'N';
 
       var markerMap = {};
       (data.markers || []).forEach(function (marker) {
@@ -382,63 +513,68 @@
           self.log('markerNotFound', { id: id });
           return;
         }
-        self.bindMarker(item, marker, tooltipOnHover, showTooltipAlways);
+        self.bindMarker(item, marker, data, tooltipOnHover, showTooltipAlways, useModal);
       });
     },
 
-    bindMarker: function (item, marker, tooltipOnHover, showTooltipAlways) {
+    bindMarker: function (item, marker, data, tooltipOnHover, showTooltipAlways, useModal) {
       var self = this;
       var pin = item.querySelector(this.SEL.pin);
-      var tooltip = item.querySelector(this.SEL.tooltip);
-      if (!pin || !tooltip) return;
+      if (!pin) return;
 
-      this.log('markerPosition', {
-        id: marker.id,
-        percent: { x: marker.x, y: marker.y },
-        style: { left: item.style.left, top: item.style.top },
-        px: {
-          layerWidth: item.offsetParent ? item.offsetParent.clientWidth : null,
-          layerHeight: item.offsetParent ? item.offsetParent.clientHeight : null,
-          computedLeft: item.offsetLeft,
-          computedTop: item.offsetTop
+      var openPopup = function () {
+        if (useModal) {
+          self.closeAll();
+          self.openModal(item, marker, data);
+          return;
         }
-      });
+        self.cancelClose(item);
+        if (self.isOpen(item)) {
+          self.closeTooltip(item);
+        } else {
+          self.closeAll(item);
+          self.openTooltip(item);
+        }
+      };
 
       if (showTooltipAlways) {
         self.openTooltip(item);
-      } else {
-        pin.addEventListener('click', function (event) {
-          event.preventDefault();
-          event.stopPropagation();
-          self.cancelClose(item);
-          if (self.isOpen(item)) {
-            self.closeTooltip(item);
-          } else {
-            self.closeAll(item);
-            self.openTooltip(item);
-          }
-        });
+        return;
+      }
 
-        // клик внутри тултипа не должен закрывать его
+      pin.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        openPopup();
+      });
+
+      if (!useModal) {
         item.addEventListener('click', function (event) { event.stopPropagation(); });
-
         pin.addEventListener('keydown', function (event) {
           if (event.key === 'Escape') self.closeTooltip(item);
         });
+      }
 
-        if (tooltipOnHover) {
-          item.addEventListener('mouseenter', function () {
-            self.cancelClose(item);
-            self.closeAll(item);
-            self.openTooltip(item);
-          });
+      if (tooltipOnHover) {
+        item.addEventListener('mouseenter', function () {
+          if (useModal) {
+            self.openModal(item, marker, data);
+            return;
+          }
+          self.cancelClose(item);
+          self.closeAll(item);
+          self.openTooltip(item);
+        });
+        if (!useModal) {
           item.addEventListener('mouseleave', function () {
             self.scheduleClose(item);
           });
         }
       }
 
-      if (tooltip.classList.contains('is-open')) {
+      var tooltip = item.querySelector(this.SEL.tooltip);
+      if (tooltip && tooltip.classList.contains('is-open')) {
+        this.bringItemFront(item);
         this.applyTooltipPlacement(item, pin, tooltip);
       }
     },
@@ -481,13 +617,6 @@
       delete root.dataset.hydrated;
     },
 
-    /* ------------------------------------------------------------------ */
-    /* Глобальные события — навешиваются один раз на всю страницу          */
-    /* ------------------------------------------------------------------ */
-
-    /** Флаг троттлинга пересчёта геометрии. */
-    _refreshPending: false,
-
     requestFrame: function (callback) {
       if (typeof window.requestAnimationFrame === 'function') {
         return window.requestAnimationFrame(callback);
@@ -495,7 +624,6 @@
       return setTimeout(callback, 16);
     },
 
-    /** Один пересчёт на кадр вместо пересчёта на каждое событие resize/scroll. */
     onViewportChange: function () {
       if (this._refreshPending) return;
       this._refreshPending = true;
@@ -517,16 +645,20 @@
       window.addEventListener('resize', onViewportChange);
       window.addEventListener('scroll', onViewportChange, true);
 
-      document.addEventListener('click', function () { self.closeAll(); });
+      document.addEventListener('click', function () {
+        self.closeAll();
+      });
 
       document.addEventListener('keydown', function (event) {
-        if (event.key === 'Escape' || event.key === 'Esc') self.closeAll();
+        if (event.key === 'Escape' || event.key === 'Esc') {
+          if (self.isModalOpen()) {
+            self.closeModal();
+            return;
+          }
+          self.closeAll();
+        }
       });
     },
-
-    /* ------------------------------------------------------------------ */
-    /* Точки входа                                                         */
-    /* ------------------------------------------------------------------ */
 
     initInstances: function () {
       var list = window.AbcwwwMarkersInstances || [];
@@ -547,7 +679,7 @@
 
     initByDataAttr: function () {
       var self = this;
-      var nodes = document.querySelectorAll('div[data-wnfgr="markers"][data-id]');
+      var nodes = document.querySelectorAll('div[data-abcwww-snippet="markers"][data-id]');
 
       Array.prototype.forEach.call(nodes, function (node) {
         if (node.dataset.initialized === 'Y') return;
@@ -562,6 +694,7 @@
         node.dataset.initialized = 'Y';
 
         var tooltipOnHover = String(node.getAttribute('data-tooltip-hover') || '').toUpperCase() === 'Y';
+        var useModal = String(node.getAttribute('data-use-modal') || '').toUpperCase() === 'Y';
 
         var params = new URLSearchParams({
           action: 'getScheme',
@@ -577,13 +710,19 @@
           .then(function (res) {
             if (res && res.success && res.data) {
               res.data.tooltipOnHover = tooltipOnHover;
+              res.data.useModal = useModal;
+              if (useModal) {
+                res.data.showTooltipAlways = false;
+                (res.data.markers || []).forEach(function (marker) {
+                  marker.opened = false;
+                });
+              }
               self.render(node, res.data);
             } else {
               throw new Error((res && res.error) || 'Некорректный ответ сервера');
             }
           })
           .catch(function (error) {
-            // снимаем флаг, чтобы повторный вызов мог попробовать снова
             delete node.dataset.initialized;
             self.log('fetchError', { sectionId: sectionId, error: error });
           });
@@ -595,8 +734,6 @@
       this.initByDataAttr();
     }
   };
-
-  //window.AbcwwwMarkers = AbcwwwMarkers;
 
   AbcwwwMarkers.init();
 

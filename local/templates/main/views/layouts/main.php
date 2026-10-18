@@ -7,8 +7,13 @@ $contentView = $contentView ?? '';
 $data_sections = is_array($data_sections ?? null) ? $data_sections : [];
 $data_section = is_array($data_section ?? null) ? $data_section : [];
 $data_product = is_array($data_product ?? null) ? $data_product : [];
+$data_order = is_array($data_order ?? null) ? $data_order : [];
 $sectionPagination = is_array($sectionPagination ?? null) ? $sectionPagination : [];
 $sectionFilter = is_array($sectionFilter ?? null) ? $sectionFilter : [];
+$jsBase = rtrim((string)($jsBase ?? '/local/modules/myapp.catalog/js/catalog/'), '/') . '/';
+$vueModuleUrl = (string)($vueModuleUrl ?? '/local/modules/myapp.catalog/js/vendor/vue.esm-browser.js');
+$useBitrixVue = !empty($useBitrixVue);
+$bitrixAssetJs = (string)($bitrixAssetJs ?? '');
 ?>
 <!DOCTYPE html>
 <html lang="ru">
@@ -19,14 +24,22 @@ $sectionFilter = is_array($sectionFilter ?? null) ? $sectionFilter : [];
 
     <title><?= htmlspecialcharsbx($pageTitle) ?></title>
 
+    <?php if ($useBitrixVue && $bitrixAssetJs !== ''): ?>        
+        <?= $bitrixAssetJs ?>
+    <?php endif; ?>
+
     <!-- Import Map: позволяет писать import 'vue' без npm -->
     <script type="importmap">
     {
         "imports": {
-            "vue": "/local/templates/assets/js/vendor/vue.esm-browser.js"
+            "vue": <?= json_encode($vueModuleUrl, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>
         }
     }
     </script>
+
+    <?php if ($useBitrixVue && $bitrixAssetJs !== ''): ?>
+        <?= $bitrixAssetStrings ?>        
+    <?php endif; ?>
 </head>
 <body>
 
@@ -34,6 +47,7 @@ $sectionFilter = is_array($sectionFilter ?? null) ? $sectionFilter : [];
     <div class="top_menu">
         <div><a href="/"> Главная</a></div>
         <div><a href="/catalog/"> Каталог</a></div>
+        <div><a href="/cart/"> Корзина</a></div>
     </div>
     <h2 style="text-align:center;">Шапка сайта</h2>
 </header>
@@ -89,14 +103,17 @@ $sectionFilter = is_array($sectionFilter ?? null) ? $sectionFilter : [];
             section_id: <?= $sectionId ?>,
             data: <?= json_encode($data_product, JSON_UNESCAPED_UNICODE) ?>,
         },
+        order: {
+            data: <?= json_encode($data_order, JSON_UNESCAPED_UNICODE) ?>,
+        },
     };
 </script>
 
-<script type="module" src="/local/templates/main/catalog/app-breadcrumbs.js"></script>
+<script type="module" src="<?= htmlspecialcharsbx($jsBase) ?>app-breadcrumbs.js"></script>
 
 <!-- JS подключается в конце body, только если нужен на этой странице -->
 <?php if (!empty($jsEntry)): ?>
-    <script type="module" src="/local/templates/main/catalog/<?= $jsEntry ?>"></script>
+    <script type="module" src="<?= htmlspecialcharsbx($jsBase . $jsEntry) ?>"></script>
 <?php endif; ?>
 
 </body>

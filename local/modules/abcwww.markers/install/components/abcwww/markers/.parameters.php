@@ -9,25 +9,58 @@ use Bitrix\Main\Loader;
 use Abcwww\Markers\Options;
 use Abcwww\Markers\Repository;
 
-if (!Loader::includeModule('abcwww.markers')) {
+if (!Loader::includeModule('abcwww.markers') || !Loader::includeModule('iblock')) {
     return;
 }
 
 $defaultIblock = (int)Option::get(Options::MODULE_ID, Options::IBLOCK_ID, Options::defaults()[Options::IBLOCK_ID]);
-$iblockId = isset($arCurrentValues['IBLOCK_ID']) ? (int)$arCurrentValues['IBLOCK_ID'] : $defaultIblock;
+$iblockTypes = Repository::getIblockTypes();
 
-$leafSections = [];
-if ($iblockId > 0) {
-    $leafSections = Repository::getLeafSections($iblockId);
+$iblockTypeId = trim((string)($arCurrentValues['IBLOCK_TYPE_ID'] ?? ''));
+$iblockId = isset($arCurrentValues['IBLOCK_ID']) ? (int)$arCurrentValues['IBLOCK_ID'] : 0;
+
+if ($iblockId <= 0 && $defaultIblock > 0) {
+    $iblockId = $defaultIblock;
 }
 
+if ($iblockTypeId === '' && $iblockId > 0) {
+    $iblockTypeId = (string)\CIBlock::GetArrayByID($iblockId, 'IBLOCK_TYPE_ID');
+}
+
+$iblocks = $iblockTypeId !== '' ? Repository::getIblocksByType($iblockTypeId) : [];
+if ($iblockId > 0 && !isset($iblocks[$iblockId])) {
+    // выбранный инфоблок не из текущего типа — сбрасываем
+    $iblockId = 0;
+}
+
+$leafSections = $iblockId > 0 ? Repository::getLeafSections($iblockId) : [];
+$propertyCodes = $iblockId > 0 ? Repository::getElementPropertyCodes($iblockId) : [];
+
 $arComponentParameters = [
+    'GROUPS' => [
+        'DATA_SOURCE' => [
+            'NAME' => 'Источник данных',
+        ],
+        'VISUAL' => [
+            'NAME' => 'Внешний вид',
+        ],
+    ],
     'PARAMETERS' => [
+        'IBLOCK_TYPE_ID' => [
+            'PARENT' => 'BASE',
+            'NAME' => 'Тип инфоблока',
+            'TYPE' => 'LIST',
+            'VALUES' => $iblockTypes,
+            'DEFAULT' => $iblockTypeId,
+            'REFRESH' => 'Y',
+        ],
         'IBLOCK_ID' => [
             'PARENT' => 'BASE',
-            'NAME' => 'IBLOCK_ID',
-            'TYPE' => 'STRING',
-            'DEFAULT' => $defaultIblock,
+            'NAME' => 'Инфоблок',
+            'TYPE' => 'LIST',
+            'VALUES' => $iblocks,
+            'DEFAULT' => $iblockId > 0 ? $iblockId : '',
+            'REFRESH' => 'Y',
         ],
         'SECTION_ID' => [
             'PARENT' => 'BASE',
@@ -68,14 +101,28 @@ $arComponentParameters = [
         'MORE_BUTTON_PROPERTY_CODE' => [
             'PARENT' => 'DATA_SOURCE',
             'NAME' => 'Код свойства со ссылкой для кнопки "Подробнее"',
-            'TYPE' => 'STRING',
+            'TYPE' => 'LIST',
+            'VALUES' => array_merge(['' => '(не выбрано)'], $propertyCodes),
             'DEFAULT' => '',
+            'ADDITIONAL_VALUES' => 'Y',
         ],
         'BUTTON_TEXT_PROPERTY_CODE' => [
             'PARENT' => 'DATA_SOURCE',
             'NAME' => 'Код свойства с текстом кнопки',
-            'TYPE' => 'STRING',
+            'TYPE' => 'LIST',
+            'VALUES' => array_merge(['' => '(не выбрано)'], $propertyCodes),
             'DEFAULT' => 'ABCWWW_BUTTON_TEXT',
+            'ADDITIONAL_VALUES' => 'Y',
+        ],
+        'PROPERTY_CODES' => [
+            'PARENT' => 'DATA_SOURCE',
+            'NAME' => 'Дополнительные свойства элементов (CODE)',
+            'TYPE' => 'LIST',
+            'VALUES' => $propertyCodes,
+            'MULTIPLE' => 'Y',
+            'SIZE' => 8,
+            'DEFAULT' => [],
+            'ADDITIONAL_VALUES' => 'Y',
         ],
         'SHOW_TOOLTIP' => [
             'PARENT' => 'VISUAL',
@@ -89,7 +136,24 @@ $arComponentParameters = [
             'TYPE' => 'CHECKBOX',
             'DEFAULT' => 'N',
         ],
-        'CACHE_TYPE' => ['PARENT' => 'CACHE_SETTINGS', 'NAME' => 'Тип кеширования', 'TYPE' => 'LIST', 'VALUES' => ['A' => 'Авто', 'Y' => 'Кешировать', 'N' => 'Не кешировать'], 'DEFAULT' => 'A'],
-        'CACHE_TIME' => ['PARENT' => 'CACHE_SETTINGS', 'NAME' => 'Время кеша', 'TYPE' => 'STRING', 'DEFAULT' => '3600000'],
+        'USE_MODAL' => [
+            'PARENT' => 'VISUAL',
+            'NAME' => 'Открывать модальное окно вместо тултипа',
+            'TYPE' => 'CHECKBOX',
+            'DEFAULT' => 'N',
+        ],
+        'CACHE_TYPE' => [
+            'PARENT' => 'CACHE_SETTINGS',
+            'NAME' => 'Тип кеширования',
+            'TYPE' => 'LIST',
+            'VALUES' => ['A' => 'Авто', 'Y' => 'Кешировать', 'N' => 'Не кешировать'],
+            'DEFAULT' => 'A',
+        ],
+        'CACHE_TIME' => [
+            'PARENT' => 'CACHE_SETTINGS',
+            'NAME' => 'Время кеша',
+            'TYPE' => 'STRING',
+            'DEFAULT' => '3600000',
+        ],
     ],
 ];

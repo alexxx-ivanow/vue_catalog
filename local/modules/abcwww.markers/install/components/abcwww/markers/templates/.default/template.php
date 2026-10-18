@@ -9,6 +9,7 @@ $asset->addJs('/bitrix/js/abcwww.markers/markers.js');
 
 $uid = 'abcwww-markers-' . $arResult['SECTION_ID'] . '-' . mt_rand(1000, 9999);
 $scheme = $arResult['SCHEME'];
+$useModal = !empty($scheme['useModal']);
 $json = CUtil::PhpToJSObject($scheme);
 ?>
 <div id="<?= htmlspecialcharsbx($uid) ?>" class="abcwww-markers-root">
@@ -16,12 +17,16 @@ $json = CUtil::PhpToJSObject($scheme);
         <div class="abcwww-markers__board">
             <img class="abcwww-markers__image" src="<?= htmlspecialcharsbx((string)($scheme['image'] ?? '')) ?>" alt="<?= htmlspecialcharsbx((string)($scheme['name'] ?? '')) ?>">
             <div class="abcwww-markers__layer">
-                <?php foreach (($scheme['markers'] ?? []) as $marker): ?>
-                    <?php include __DIR__ . '/_marker_item.php'; ?>
-                <?php endforeach; ?>
+                <? foreach (($scheme['markers'] ?? []) as $marker): ?>
+                    <? include __DIR__ . '/_marker_item.php'; ?>
+                <? endforeach; ?>
             </div>
         </div>
     </div>
+
+    <? if ($useModal): ?>
+        <? include __DIR__ . '/_modal.php'; ?>
+    <? endif; ?>
 </div>
 <script>
     window.AbcwwwMarkersInstances = window.AbcwwwMarkersInstances || [];
