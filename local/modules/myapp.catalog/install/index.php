@@ -10,6 +10,8 @@ class myapp_catalog extends CModule
 {
     private const OPT_TEMPLATES_INSTALLED = 'TEMPLATES_INSTALLED';
 
+    private const ROUTES_FILE = 'vue_catalog.php';
+
     public $MODULE_ID = 'myapp.catalog';
     public $MODULE_VERSION;
     public $MODULE_VERSION_DATE;
@@ -34,12 +36,14 @@ class myapp_catalog extends CModule
     {
         ModuleManager::registerModule($this->MODULE_ID);
         $this->installTemplates();
+        $this->installRoutes();
     }
 
     public function DoUninstall()
     {
-        ModuleManager::unRegisterModule($this->MODULE_ID);
+        $this->uninstallRoutes();
         Option::delete($this->MODULE_ID);
+        ModuleManager::unRegisterModule($this->MODULE_ID);
     }
 
     public function installTemplates(): void
@@ -67,5 +71,84 @@ class myapp_catalog extends CModule
         }
 
         Option::set($this->MODULE_ID, self::OPT_TEMPLATES_INSTALLED, 'Y');
+    }
+
+    public function installRoutes(): void
+    {
+        $documentRoot = (string)$_SERVER['DOCUMENT_ROOT'];
+        $source = __DIR__ . '/routes/' . self::ROUTES_FILE;
+        $targetDir = $documentRoot . '/local/routes';
+        $target = $targetDir . '/' . self::ROUTES_FILE;
+
+        if (!is_file($source)) {
+            return;
+        }
+
+        if (!is_dir($targetDir)) {
+            CheckDirPath($targetDir . '/');
+        }
+
+        copy($source, $target);
+        $this->registerRoutingConfig($documentRoot);
+    }
+
+    public function uninstallRoutes(): void
+    {
+        $documentRoot = (string)$_SERVER['DOCUMENT_ROOT'];
+        $routesFile = $documentRoot . '/local/routes/' . self::ROUTES_FILE;
+
+        if (is_file($routesFile)) {
+            @unlink($routesFile);
+        }
+
+        $settingsPath = $documentRoot . '/local/.settings_extra.php';
+        if (is_file($settingsPath)) {
+            @unlink($settingsPath);
+            if (function_exists('opcache_invalidate')) {
+                opcache_invalidate($settingsPath, true);
+            }
+        }
+    }
+
+    private function registerRoutingConfig(string $documentRoot): void
+    {
+        $settingsPath = $documentRoot . '/local/.settings_extra.php';
+        $settings = [];
+
+        if (is_file($settingsPath)) {
+            $loaded = include $settingsPath;
+            if (is_array($loaded)) {
+                $settings = $loaded;
+            }
+        }
+
+        $routing = $settings['routing']['value'] ?? [];
+        $config = $routing['config'] ?? [];
+        if (!is_array($config)) {
+            $config = [];
+        }
+
+        if (in_array(self::ROUTES_FILE, $config, true)) {
+            return;
+        }
+
+        $config[] = self::ROUTES_FILE;
+        $settings['routing'] = [
+            'value' => [
+                'config' => array_values($config),
+            ],
+            'readonly' => false,
+        ];
+
+        $export = var_export($settings, true);
+        $content = "<?php\n\nreturn {$export};\n";
+
+        if (@file_put_contents($settingsPath, $content) === false) {
+            return;
+        }
+
+        if (function_exists('opcache_invalidate')) {
+            opcache_invalidate($settingsPath, true);
+        }
     }
 }
