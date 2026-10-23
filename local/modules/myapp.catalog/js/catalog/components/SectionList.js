@@ -1,6 +1,7 @@
 import ProductCard from './ProductCard.js';
 import CatalogPagination from './CatalogPagination.js';
 import CatalogFilter from './CatalogFilter.js';
+import { catalogApiUrl, getReadHeaders } from '../apiClient.js';
 
 const SKELETON_PRODUCT_COUNT = 8;
 const DEFAULT_LIMIT = 12;
@@ -197,8 +198,8 @@ export default {
                 const params = new URLSearchParams({
                     section: String(this.store.sectionId),
                 });
-                const res = await fetch('/api/v1/catalog/filters?' + params.toString(), {
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                const res = await fetch(catalogApiUrl('catalog/filters') + '?' + params.toString(), {
+                    headers: getReadHeaders(),
                 });
                 const data = await res.json();
                 if (!res.ok) {
@@ -233,8 +234,8 @@ export default {
                     }
                 });
 
-                const res = await fetch('/api/v1/catalog/goods?' + params.toString(), {
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                const res = await fetch(catalogApiUrl('catalog/goods') + '?' + params.toString(), {
+                    headers: getReadHeaders(),
                 });
                 const data = await res.json();
                 if (!res.ok) {

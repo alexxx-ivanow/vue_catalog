@@ -6,7 +6,7 @@ import CheckoutPaymentList from './CheckoutPaymentList.js';
 import CheckoutPropertiesForm from './CheckoutPropertiesForm.js';
 import CheckoutBasketList from './CheckoutBasketList.js';
 import CheckoutTotalsSidebar from './CheckoutTotalsSidebar.js';
-import { apiGet, apiPost } from '../apiClient.js';
+import { apiGet, apiPost, catalogApiUrl } from '../apiClient.js';
 
 export default {
     name: 'CheckoutPage',
@@ -189,7 +189,7 @@ export default {
             this.loading = true;
             this.error = '';
             try {
-                const { res, data } = await apiGet('/api/v1/checkout/init');
+                const { res, data } = await apiGet(catalogApiUrl('checkout/init'));
                 if (!res.ok || !data.success) {
                     if (data.code === 'EMPTY_BASKET') {
                         window.location.href = '/cart/';
@@ -233,7 +233,7 @@ export default {
             }
 
             try {
-                const { res, data } = await apiPost('/api/v1/checkout/calculate', this.buildPayload());
+                const { res, data } = await apiPost(catalogApiUrl('checkout/calculate'), this.buildPayload());
                 if (!res.ok || !data.success) {
                     if (data.code === 'EMPTY_BASKET') {
                         window.location.href = '/cart/';
@@ -276,7 +276,7 @@ export default {
             this.error = '';
 
             try {
-                const { res, data } = await apiPost('/api/v1/checkout/submit', this.buildPayload());
+                const { res, data } = await apiPost(catalogApiUrl('checkout/submit'), this.buildPayload());
                 if (!res.ok || !data.success) {
                     this.error = data.error || 'Не удалось оформить заказ';
                     return;

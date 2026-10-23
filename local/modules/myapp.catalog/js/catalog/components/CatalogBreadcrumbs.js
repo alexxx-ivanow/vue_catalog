@@ -1,3 +1,5 @@
+import { catalogApiUrl, getReadHeaders } from '../apiClient.js';
+
 export default {
     name: 'CatalogBreadcrumbs',
     data() {
@@ -29,10 +31,8 @@ export default {
                     product: String(productId),
                 });
 
-                const res = await fetch('/api/v1/catalog/breadcrumbs?' + params.toString(), {
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
+                const res = await fetch(catalogApiUrl('catalog/breadcrumbs') + '?' + params.toString(), {
+                    headers: getReadHeaders(),
                 });
                 const data = await res.json();
                 this.items = Array.isArray(data.items) ? data.items : [];

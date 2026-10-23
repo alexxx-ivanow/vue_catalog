@@ -1,4 +1,5 @@
 import { ref } from 'vue';
+import { catalogApiUrl, getJsonHeaders } from '../apiClient.js';
 
 export default {
     name: 'ProductCard',
@@ -16,12 +17,9 @@ export default {
             adding.value = true;
 
             try {
-                const res = await fetch('/api/v1/catalog/cart/add', {
+                const res = await fetch(catalogApiUrl('catalog/cart/add'), {
                     method: 'POST',
-                    headers: {
-                        'Content-Type':     'application/json',
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
+                    headers: getJsonHeaders(),
                     body: JSON.stringify({
                         productId: props.product.ID,
                         sessid:    window.__BX__.sessid,

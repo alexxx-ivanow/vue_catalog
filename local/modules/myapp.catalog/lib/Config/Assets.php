@@ -12,6 +12,9 @@ final class Assets
 
     public const OPT_USE_BITRIX_VUE = 'use_bitrix_vue';
 
+    /** Базовый URL JSON API Vue-каталога (от document root, без завершающего слэша). */
+    public const API_V1_BASE = '/vue_catalog/api/v1';
+
     /** Базовый URL ES-модулей Vue-каталога (от document root). */
     public const JS_CATALOG_BASE = '/local/modules/myapp.catalog/js/catalog/';
 

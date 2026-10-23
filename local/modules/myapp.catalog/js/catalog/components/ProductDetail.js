@@ -1,4 +1,5 @@
 import AppPreloader from './AppPreloader.js';
+import { catalogApiUrl, getJsonHeaders, getReadHeaders } from '../apiClient.js';
 
 export default {
     name: 'ProductDetail',
@@ -29,10 +30,8 @@ export default {
             this.loadError = '';
 
             try {
-                const res = await fetch('/api/v1/catalog/goods/' + this.productId, {
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
+                const res = await fetch(catalogApiUrl('catalog/goods/' + this.productId), {
+                    headers: getReadHeaders(),
                 });
 
                 const data = await res.json();
@@ -55,12 +54,9 @@ export default {
             this.adding = true;
 
             try {
-                const res = await fetch('/api/v1/catalog/cart/add', {
+                const res = await fetch(catalogApiUrl('catalog/cart/add'), {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
+                    headers: getJsonHeaders(),
                     body: JSON.stringify({
                         productId: this.product.ID,
                         quantity: 1,

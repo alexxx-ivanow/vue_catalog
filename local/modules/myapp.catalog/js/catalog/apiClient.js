@@ -1,3 +1,16 @@
+const DEFAULT_API_BASE = '/vue_catalog/api/v1/';
+
+export function getApiBase() {
+    const base = window.__BX__?.apiBase || DEFAULT_API_BASE;
+    return base.endsWith('/') ? base : base + '/';
+}
+
+/** Путь от корня сайта, например catalog/sections */
+export function catalogApiUrl(path) {
+    const relative = String(path).replace(/^\//, '');
+    return getApiBase() + relative;
+}
+
 export function getSessid() {
     return window.__BX__?.sessid || '';
 }

@@ -16,6 +16,7 @@ abstract class BasePageController extends Controller
         $useBitrixVue = Assets::prepareVueForPage();
 
         $initialState['jsBase'] = Assets::JS_CATALOG_BASE;
+        $initialState['apiBase'] = Assets::API_V1_BASE . '/';
         $initialState['vueModuleUrl'] = Assets::vueModuleUrl();
         $initialState['useBitrixVue'] = $useBitrixVue;
         $initialState['bitrixAssetJs'] = '';

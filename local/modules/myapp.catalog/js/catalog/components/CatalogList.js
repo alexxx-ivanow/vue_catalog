@@ -1,4 +1,5 @@
 import SectionCard from './SectionCard.js';
+import { catalogApiUrl, getReadHeaders } from '../apiClient.js';
 
 const SKELETON_COUNT = 8;
 
@@ -49,8 +50,8 @@ export default {
             this.store.loadError = '';
 
             try {
-                const res = await fetch('/api/v1/catalog/sections', {
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                const res = await fetch(catalogApiUrl('catalog/sections'), {
+                    headers: getReadHeaders(),
                 });
                 const data = await res.json();
                 if (!res.ok) {

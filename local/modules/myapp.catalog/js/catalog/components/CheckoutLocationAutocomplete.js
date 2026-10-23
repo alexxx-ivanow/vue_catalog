@@ -1,4 +1,4 @@
-import { apiGet } from '../apiClient.js';
+import { apiGet, catalogApiUrl } from '../apiClient.js';
 
 export default {
     name: 'CheckoutLocationAutocomplete',
@@ -41,7 +41,7 @@ export default {
             this.loading = true;
             try {
                 const params = new URLSearchParams({ q, limit: '10' });
-                const { data } = await apiGet('/api/v1/checkout/locations?' + params.toString());
+                const { data } = await apiGet(catalogApiUrl('checkout/locations') + '?' + params.toString());
                 this.items = Array.isArray(data.items) ? data.items : [];
                 this.open = this.items.length > 0;
             } catch (e) {

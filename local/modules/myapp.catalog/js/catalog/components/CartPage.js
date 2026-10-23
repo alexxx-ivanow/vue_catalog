@@ -1,4 +1,5 @@
 import AppPreloader from './AppPreloader.js';
+import { catalogApiUrl, getReadHeaders } from '../apiClient.js';
 
 export default {
     name: 'CartPage',
@@ -60,10 +61,8 @@ export default {
             this.loadError = '';
 
             try {
-                const res = await fetch('/api/v1/catalog/cart', {
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
+                const res = await fetch(catalogApiUrl('catalog/cart'), {
+                    headers: getReadHeaders(),
                 });
                 const data = await res.json();
 
@@ -99,7 +98,7 @@ export default {
             this.loadError = '';
 
             try {
-                const res = await fetch('/api/v1/catalog/cart/update', {
+                const res = await fetch(catalogApiUrl('catalog/cart/update'), {
                     method: 'POST',
                     headers: this.cartHeaders(),
                     body: JSON.stringify({
@@ -131,7 +130,7 @@ export default {
             this.loadError = '';
 
             try {
-                const res = await fetch('/api/v1/catalog/cart/remove', {
+                const res = await fetch(catalogApiUrl('catalog/cart/remove'), {
                     method: 'POST',
                     headers: this.cartHeaders(),
                     body: JSON.stringify({

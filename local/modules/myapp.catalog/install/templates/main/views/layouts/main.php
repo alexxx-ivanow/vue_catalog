@@ -10,6 +10,7 @@ $data_product = is_array($data_product ?? null) ? $data_product : [];
 $data_order = is_array($data_order ?? null) ? $data_order : [];
 $sectionPagination = is_array($sectionPagination ?? null) ? $sectionPagination : [];
 $sectionFilter = is_array($sectionFilter ?? null) ? $sectionFilter : [];
+$apiBase = (string)($apiBase ?? '/vue_catalog/api/v1/');
 $jsBase = rtrim((string)($jsBase ?? '/local/modules/myapp.catalog/js/catalog/'), '/') . '/';
 $vueModuleUrl = (string)($vueModuleUrl ?? '/local/modules/myapp.catalog/js/vendor/vue.esm-browser.js');
 $useBitrixVue = !empty($useBitrixVue);
@@ -70,7 +71,7 @@ $bitrixAssetJs = (string)($bitrixAssetJs ?? '');
 <script>
     window.__BX__ = {
         sessid:  '<?= bitrix_sessid() ?>',
-        apiBase: '/api/v1/',
+        apiBase: <?= json_encode(rtrim($apiBase, '/') . '/', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>,
         userId:  <?= (int)$GLOBALS['USER']->GetID() ?>,
     };
 

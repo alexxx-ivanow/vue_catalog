@@ -1,3 +1,5 @@
+import { catalogApiUrl, getReadHeaders } from '../apiClient.js';
+
 export default {
     name: 'CatalogPagination',
 
@@ -43,10 +45,8 @@ export default {
                     }
                 });
 
-                const res = await fetch('/api/v1/catalog/goods?' + params.toString(), {
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
+                const res = await fetch(catalogApiUrl('catalog/goods') + '?' + params.toString(), {
+                    headers: getReadHeaders(),
                 });
                 const data = await res.json();
                 if (!res.ok) {
