@@ -48,7 +48,7 @@ $bitrixAssetJs = (string)($bitrixAssetJs ?? '');
 <header class="site-header">
     <div class="site-header__inner container">
         <a href="/" class="site-header__logo">
-            <img src="/include/logo.png" alt="<?= htmlspecialcharsbx($pageTitle) ?>" width="180" height="48">
+            <img src="/local/templates/assets/img/svg/logo.svg" alt="<?= htmlspecialcharsbx($pageTitle) ?>" width="180" height="48">
         </a>
         <nav class="site-nav" aria-label="Основное меню">
             <a href="/" class="site-nav__link">Главная</a>
