@@ -298,7 +298,7 @@ export default {
     },
     template: `
         <div class="catalog-page">
-            <h1 style="text-align:center;">
+            <h1 class="catalog-page__title">
                 <span v-if="store.loading && !store.sectionName" class="catalog-skeleton-line catalog-skeleton-line--title" aria-hidden="true"></span>
                 <template v-else>{{ store.sectionName }}</template>
             </h1>

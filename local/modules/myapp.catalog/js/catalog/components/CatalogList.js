@@ -73,6 +73,7 @@ export default {
     },
     template: `
         <div class="catalog-page">
+            <h1 class="catalog-page__title">Каталог</h1>
             <section class="catalog-page__content">
                 <div class="catalog-page__toolbar">
                     <span v-if="store.loading" class="catalog-skeleton-line catalog-skeleton-line--toolbar" aria-hidden="true"></span>

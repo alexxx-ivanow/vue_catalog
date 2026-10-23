@@ -20,6 +20,7 @@ $bitrixAssetJs = (string)($bitrixAssetJs ?? '');
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <link rel="stylesheet" href="/local/templates/assets/css/style.css">
 
@@ -42,18 +43,22 @@ $bitrixAssetJs = (string)($bitrixAssetJs ?? '');
         <?= $bitrixAssetStrings ?>        
     <?php endif; ?>
 </head>
-<body>
+<body class="site-body">
 
-<header>
-    <div class="top_menu">
-        <div><a href="/"> Главная</a></div>
-        <div><a href="/catalog/"> Каталог</a></div>
-        <div><a href="/cart/"> Корзина</a></div>
+<header class="site-header">
+    <div class="site-header__inner container">
+        <a href="/" class="site-header__logo">
+            <img src="/include/logo.png" alt="<?= htmlspecialcharsbx($pageTitle) ?>" width="180" height="48">
+        </a>
+        <nav class="site-nav" aria-label="Основное меню">
+            <a href="/" class="site-nav__link">Главная</a>
+            <a href="/catalog/" class="site-nav__link">Каталог</a>
+            <a href="/cart/" class="site-nav__link">Корзина</a>
+        </nav>
     </div>
-    <h2 style="text-align:center;">Шапка сайта</h2>
 </header>
 
-<main>
+<main class="site-main">
     <div class="container">
         <div id="app-breadcrumbs"></div>
         <?php if (!empty($contentView)): ?>
@@ -67,8 +72,10 @@ $bitrixAssetJs = (string)($bitrixAssetJs ?? '');
     </div>
 </main>
 
-<footer>
-    <h3 style="text-align:center;">Подвал сайта</h3>
+<footer class="site-footer">
+    <div class="site-footer__inner container">
+        <p class="site-footer__copy">© <?= date('Y') ?> Интернет-магазин. Все права защищены.</p>
+    </div>
 </footer>
 
 <!-- Передаём данные из PHP в JS -->
