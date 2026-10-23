@@ -53,7 +53,7 @@ $bitrixAssetJs = (string)($bitrixAssetJs ?? '');
         <nav class="site-nav" aria-label="Основное меню">
             <a href="/" class="site-nav__link">Главная</a>
             <a href="/catalog/" class="site-nav__link">Каталог</a>
-            <a href="/cart/" class="site-nav__link">Корзина</a>
+            <div id="app-cart-nav"></div>
         </nav>
     </div>
 </header>
@@ -118,6 +118,7 @@ $bitrixAssetJs = (string)($bitrixAssetJs ?? '');
 </script>
 
 <script type="module" src="<?= htmlspecialcharsbx($jsBase) ?>app-breadcrumbs.js"></script>
+<script type="module" src="<?= htmlspecialcharsbx($jsBase) ?>app-cart-nav.js"></script>
 
 <!-- JS подключается в конце body, только если нужен на этой странице -->
 <?php if (!empty($jsEntry)): ?>

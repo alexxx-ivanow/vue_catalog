@@ -94,6 +94,14 @@
     border-bottom-color: var(--color-accent);
 }
 
+.site-nav__link--cart {
+    white-space: nowrap;
+}
+
+#app-cart-nav {
+    display: contents;
+}
+
 .site-footer {
     border-top: 1px solid var(--color-border);
     background: var(--color-bg-muted);

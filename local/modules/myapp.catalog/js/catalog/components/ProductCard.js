@@ -1,5 +1,6 @@
 import { ref } from 'vue';
 import { catalogApiUrl, getJsonHeaders } from '../apiClient.js';
+import { syncCartCountFromResponse } from '../cartCounter.js';
 
 export default {
     name: 'ProductCard',
@@ -30,8 +31,8 @@ export default {
 
                 if (data.success) {
                     added.value = true;
-                    // Обновляем sessid из ответа
                     if (data.sessid) window.__BX__.sessid = data.sessid;
+                    syncCartCountFromResponse(data);
                     setTimeout(() => added.value = false, 2000);
                 }
 

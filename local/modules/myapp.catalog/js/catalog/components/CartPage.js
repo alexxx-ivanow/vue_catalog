@@ -1,5 +1,6 @@
 import AppPreloader from './AppPreloader.js';
 import { catalogApiUrl, getReadHeaders } from '../apiClient.js';
+import { setCartCount } from '../cartCounter.js';
 
 export default {
     name: 'CartPage',
@@ -55,6 +56,7 @@ export default {
                 total: Number(data?.totals?.total) || 0,
                 basketCount: Number(data?.totals?.basketCount) || 0,
             };
+            setCartCount(this.totals.basketCount);
         },
         async loadCart() {
             this.loading = true;

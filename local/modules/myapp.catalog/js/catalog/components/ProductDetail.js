@@ -1,5 +1,6 @@
 import AppPreloader from './AppPreloader.js';
 import { catalogApiUrl, getJsonHeaders, getReadHeaders } from '../apiClient.js';
+import { syncCartCountFromResponse } from '../cartCounter.js';
 
 export default {
     name: 'ProductDetail',
@@ -68,8 +69,8 @@ export default {
 
                 if (data.success) {
                     this.added = true;
-                    // Update sessid if server rotates it.
                     if (data.sessid) window.__BX__.sessid = data.sessid;
+                    syncCartCountFromResponse(data);
                     setTimeout(() => {
                         this.added = false;
                     }, 2000);
