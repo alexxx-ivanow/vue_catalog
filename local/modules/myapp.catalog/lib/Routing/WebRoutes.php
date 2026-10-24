@@ -8,6 +8,7 @@ use MyApp\Catalog\Controller\ApiController;
 use MyApp\Catalog\Controller\CartController;
 use MyApp\Catalog\Controller\CatalogController;
 use MyApp\Catalog\Controller\CheckoutApiController;
+use MyApp\Catalog\Controller\HomeController;
 use MyApp\Catalog\Controller\OrderController;
 use MyApp\Catalog\Controller\OrderSuccessController;
 use MyApp\Catalog\Controller\ProductController;
@@ -17,6 +18,7 @@ class WebRoutes
     public static function configure(RoutingConfigurator $routes): void
     {
         // ---------- Страницы (HTML) ----------
+        $routes->get('/', [HomeController::class, 'index']);
         $routes->get('/catalog/', [CatalogController::class, 'index']);
         /*$routes->get('/catalog/{code}', [CatalogController::class, 'section'])
             ->where('code', '[a-zA-Z0-9_-]+');*/

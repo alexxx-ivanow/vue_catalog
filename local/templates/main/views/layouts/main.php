@@ -15,6 +15,7 @@ $jsBase = rtrim((string)($jsBase ?? '/local/modules/myapp.catalog/js/catalog/'),
 $vueModuleUrl = (string)($vueModuleUrl ?? '/local/modules/myapp.catalog/js/vendor/vue.esm-browser.js');
 $useBitrixVue = !empty($useBitrixVue);
 $bitrixAssetJs = (string)($bitrixAssetJs ?? '');
+$showBreadcrumbs = ($showBreadcrumbs ?? true) !== false;
 ?>
 <!DOCTYPE html>
 <html lang="ru">
@@ -60,7 +61,9 @@ $bitrixAssetJs = (string)($bitrixAssetJs ?? '');
 
 <main class="site-main">
     <div class="container">
-        <div id="app-breadcrumbs"></div>
+        <?php if ($showBreadcrumbs): ?>
+            <div id="app-breadcrumbs"></div>
+        <?php endif; ?>
         <?php if (!empty($contentView)): ?>
             <?php
             $contentFile = \Bitrix\Main\Application::getDocumentRoot() . $contentView;
@@ -117,7 +120,9 @@ $bitrixAssetJs = (string)($bitrixAssetJs ?? '');
     };
 </script>
 
-<script type="module" src="<?= htmlspecialcharsbx($jsBase) ?>app-breadcrumbs.js"></script>
+<?php if ($showBreadcrumbs): ?>
+    <script type="module" src="<?= htmlspecialcharsbx($jsBase) ?>app-breadcrumbs.js"></script>
+<?php endif; ?>
 <script type="module" src="<?= htmlspecialcharsbx($jsBase) ?>app-cart-nav.js"></script>
 
 <!-- JS подключается в конце body, только если нужен на этой странице -->
