@@ -7,10 +7,10 @@ use Bitrix\Main\Application;
 use Bitrix\Iblock\ElementTable;
 use Bitrix\Catalog\PriceTable;
 use Bitrix\Main\FileTable;
+use MyApp\Catalog\Config\Assets;
 
 class CatalogService
 {
-    private const IBLOCK_ID      = 2;
     public const GOODS_PER_PAGE  = 12;
     public const MAX_GOODS_PER_PAGE = 48;
     private const PRICE_GROUP_ID = 1;
@@ -21,6 +21,11 @@ class CatalogService
     public const PROP_SIZES_ID         = 26;
     private const PROP_MATERIAL_CODE   = 'MATERIAL';
 
+    private static function iblockId(): int
+    {
+        return Assets::catalogIblockId();
+    }
+
     // Категории первого уровня
     public static function getSections(): array
     {
@@ -30,7 +35,7 @@ class CatalogService
         $sql = "
         SELECT ID, NAME, CODE, PICTURE, DESCRIPTION
         FROM b_iblock_section
-        WHERE IBLOCK_ID   = " . self::IBLOCK_ID . "
+        WHERE IBLOCK_ID   = " . self::iblockId() . "
           AND ACTIVE       = 'Y'
           AND DEPTH_LEVEL  = 1
         ORDER BY SORT ASC, NAME ASC
@@ -57,7 +62,7 @@ class CatalogService
         SELECT LEFT_MARGIN, RIGHT_MARGIN, NAME
         FROM b_iblock_section
         WHERE ID       = {$sectionId}
-          AND IBLOCK_ID = " . self::IBLOCK_ID . "
+          AND IBLOCK_ID = " . self::iblockId() . "
           AND ACTIVE    = 'Y'
         LIMIT 1
     ";
@@ -91,7 +96,7 @@ class CatalogService
 
         $result = ElementTable::getList([
             'select' => ['ID', 'NAME', 'CODE', 'DETAIL_TEXT', 'DETAIL_PICTURE'],
-            'filter' => ['=IBLOCK_ID' => self::IBLOCK_ID, '=ACTIVE' => 'Y', '=ID' => $id],
+            'filter' => ['=IBLOCK_ID' => self::iblockId(), '=ACTIVE' => 'Y', '=ID' => $id],
         ])->fetch();
 
         if (!$result) {
@@ -165,7 +170,7 @@ class CatalogService
 
         $sqlHelper = $db->getSqlHelper();
         $whereParts = [
-            "e.IBLOCK_ID = " . self::IBLOCK_ID,
+            "e.IBLOCK_ID = " . self::iblockId(),
             "e.ACTIVE = 'Y'",
         ];
         $joinParts = [];
@@ -328,7 +333,7 @@ class CatalogService
                 INNER JOIN b_iblock_element e
                     ON e.ID = se.IBLOCK_ELEMENT_ID
                 WHERE se.IBLOCK_SECTION_ID IN ({$sectionIdsSql})
-                  AND e.IBLOCK_ID = " . self::IBLOCK_ID . "
+                  AND e.IBLOCK_ID = " . self::iblockId() . "
                   AND e.ACTIVE = 'Y'
                 ORDER BY e.SORT ASC, e.ID DESC
             ";
@@ -553,7 +558,7 @@ class CatalogService
         Loader::includeModule('catalog');
 
         $db = Application::getConnection();
-        $iblockId = self::IBLOCK_ID;
+        $iblockId = self::iblockId();
         $scopeFrom = "FROM b_iblock_element e";
         $scopeWhere = "e.IBLOCK_ID = {$iblockId} AND e.ACTIVE = 'Y'";
         $perfForQueries = null;
@@ -935,7 +940,7 @@ class CatalogService
         $sql = "
             SELECT ID
             FROM b_iblock_property
-            WHERE IBLOCK_ID = " . self::IBLOCK_ID . "
+            WHERE IBLOCK_ID = " . self::iblockId() . "
               AND CODE = '{$safeCode}'
             LIMIT 1
         ";
@@ -1095,7 +1100,7 @@ class CatalogService
         $sql = "
             SELECT ID
             FROM b_iblock_section
-            WHERE IBLOCK_ID = " . self::IBLOCK_ID . "
+            WHERE IBLOCK_ID = " . self::iblockId() . "
               AND ACTIVE = 'Y'
               AND LEFT_MARGIN >= {$leftMargin}
               AND RIGHT_MARGIN <= {$rightMargin}
@@ -1154,7 +1159,7 @@ class CatalogService
         FROM b_iblock_section_element se
         JOIN b_iblock_section s ON s.ID = se.IBLOCK_SECTION_ID
         WHERE se.IBLOCK_ELEMENT_ID = {$productId}
-          AND s.IBLOCK_ID = " . self::IBLOCK_ID . "
+          AND s.IBLOCK_ID = " . self::iblockId() . "
           AND s.ACTIVE = 'Y'
         ORDER BY s.DEPTH_LEVEL DESC, s.SORT ASC
         LIMIT 1
@@ -1174,7 +1179,7 @@ class CatalogService
         $sql = "
             SELECT ID, NAME
             FROM b_iblock_section
-            WHERE IBLOCK_ID = " . self::IBLOCK_ID . "
+            WHERE IBLOCK_ID = " . self::iblockId() . "
               AND ACTIVE = 'Y'
               AND IBLOCK_SECTION_ID = {$sectionId}
             ORDER BY SORT ASC, NAME ASC
@@ -1206,9 +1211,9 @@ class CatalogService
             SELECT parent.ID, parent.NAME
             FROM b_iblock_section parent
             JOIN b_iblock_section current_section ON current_section.ID = {$sectionId}
-            WHERE parent.IBLOCK_ID = " . self::IBLOCK_ID . "
+            WHERE parent.IBLOCK_ID = " . self::iblockId() . "
               AND parent.ACTIVE = 'Y'
-              AND current_section.IBLOCK_ID = " . self::IBLOCK_ID . "
+              AND current_section.IBLOCK_ID = " . self::iblockId() . "
               AND current_section.ACTIVE = 'Y'
               AND parent.LEFT_MARGIN <= current_section.LEFT_MARGIN
               AND parent.RIGHT_MARGIN >= current_section.RIGHT_MARGIN

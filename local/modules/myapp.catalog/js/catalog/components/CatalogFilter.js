@@ -4,6 +4,7 @@ export default {
     props: {
         meta: { type: Object, default: () => ({}) },
         modelValue: { type: Object, default: () => ({}) },
+        applying: { type: Boolean, default: false },
     },
 
     emits: ['update:modelValue', 'apply'],
@@ -332,8 +333,25 @@ export default {
             </div>
 
             <div class="catalog-filter__buttons">
-                <button class="catalog_item__btn" @click="apply">Применить</button>
-                <button class="catalog-filter__reset" @click="reset">Сбросить</button>
+                <button
+                    type="button"
+                    class="catalog_item__btn catalog-filter__apply"
+                    :disabled="applying"
+                    :aria-busy="applying"
+                    @click="apply"
+                >
+                    <svg
+                        v-if="applying"
+                        class="app-preloader__spinner catalog-filter__apply-spinner"
+                        viewBox="0 0 50 50"
+                        aria-hidden="true"
+                    >
+                        <circle class="app-preloader__track" cx="25" cy="25" r="20"></circle>
+                        <circle class="app-preloader__stroke" cx="25" cy="25" r="20"></circle>
+                    </svg>
+                    <span v-else>Применить</span>
+                </button>
+                <button type="button" class="catalog-filter__reset" :disabled="applying" @click="reset">Сбросить</button>
             </div>
         </div>
     `,

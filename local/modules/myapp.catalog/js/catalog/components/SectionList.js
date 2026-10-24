@@ -313,6 +313,7 @@ export default {
                         v-else
                         v-model="store.filter"
                         :meta="store.filterMeta"
+                        :applying="store.loading"
                         @apply="applyFilter"
                     />
                 </aside>

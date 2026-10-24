@@ -17,12 +17,23 @@ Loc::loadMessages(__FILE__);
 
 $moduleId = 'myapp.catalog';
 $optUseBitrixVue = 'use_bitrix_vue';
+$optCatalogIblockId = 'catalog_iblock_id';
+$defaultCatalogIblockId = 2;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
     Option::set($moduleId, $optUseBitrixVue, isset($_POST[$optUseBitrixVue]) ? 'Y' : 'N');
+
+    $postedIblockId = (int)($_POST[$optCatalogIblockId] ?? 0);
+    if ($postedIblockId > 0) {
+        Option::set($moduleId, $optCatalogIblockId, (string)$postedIblockId);
+    }
 }
 
 $useBitrixVue = Option::get($moduleId, $optUseBitrixVue, 'N') === 'Y';
+$catalogIblockId = (int)Option::get($moduleId, $optCatalogIblockId, (string)$defaultCatalogIblockId);
+if ($catalogIblockId <= 0) {
+    $catalogIblockId = $defaultCatalogIblockId;
+}
 
 $aTabs = [
     [
@@ -58,6 +69,23 @@ $tabControl->Begin();
                 <?= $useBitrixVue ? 'checked' : '' ?>
             >
             <label class="adm-designed-checkbox-label" for="MYAPP_CATALOG_USE_BITRIX_VUE"></label>
+        </td>
+    </tr>
+    <tr>
+        <td width="50%" class="adm-detail-content-cell-l">
+            <label for="MYAPP_CATALOG_IBLOCK_ID">
+                <?= Loc::getMessage('MYAPP_CATALOG_OPT_IBLOCK_ID') ?>
+            </label>
+        </td>
+        <td width="50%" class="adm-detail-content-cell-r">
+            <input
+                type="number"
+                min="1"
+                step="1"
+                id="MYAPP_CATALOG_IBLOCK_ID"
+                name="<?= htmlspecialcharsbx($optCatalogIblockId) ?>"
+                value="<?= (int)$catalogIblockId ?>"
+            >
         </td>
     </tr>
     <?php

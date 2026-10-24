@@ -12,6 +12,10 @@ final class Assets
 
     public const OPT_USE_BITRIX_VUE = 'use_bitrix_vue';
 
+    public const OPT_CATALOG_IBLOCK_ID = 'catalog_iblock_id';
+
+    public const DEFAULT_CATALOG_IBLOCK_ID = 2;
+
     /** Базовый URL JSON API Vue-каталога (от document root, без завершающего слэша). */
     public const API_V1_BASE = '/vue_catalog/api/v1';
 
@@ -36,6 +40,17 @@ final class Assets
     public static function useBitrixVueOption(): bool
     {
         return Option::get(self::MODULE_ID, self::OPT_USE_BITRIX_VUE, 'N') === 'Y';
+    }
+
+    public static function catalogIblockId(): int
+    {
+        $iblockId = (int)Option::get(
+            self::MODULE_ID,
+            self::OPT_CATALOG_IBLOCK_ID,
+            (string)self::DEFAULT_CATALOG_IBLOCK_ID
+        );
+
+        return $iblockId > 0 ? $iblockId : self::DEFAULT_CATALOG_IBLOCK_ID;
     }
 
     /**
