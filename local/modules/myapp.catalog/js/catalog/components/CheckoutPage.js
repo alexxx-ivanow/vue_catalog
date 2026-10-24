@@ -25,7 +25,7 @@ export default {
             loading: true,
             calculating: false,
             submitting: false,
-            error: '',
+            errors: [],
             personTypes: [],
             deliveries: [],
             paySystems: [],
@@ -123,6 +123,45 @@ export default {
             clearTimeout(this.calcTimer);
             this.calcTimer = setTimeout(() => this.calculate(resetErrors), 350);
         },
+        clearErrors() {
+            this.errors = [];
+        },
+        setErrors(errors, fallback = 'Произошла ошибка') {
+            const list = Array.isArray(errors) ? errors : [errors];
+            this.errors = list.map((item) => String(item ?? '').trim()).filter(Boolean);
+            if (!this.errors.length) {
+                this.errors = [fallback];
+            }
+            this.scrollToErrors();
+        },
+        extractApiErrors(data, fallback) {
+            if (Array.isArray(data?.errors) && data.errors.length) {
+                return data.errors;
+            }
+            if (Array.isArray(data?.propertyErrors) && data.propertyErrors.length) {
+                return data.propertyErrors;
+            }
+            if (data?.error) {
+                return String(data.error)
+                    .split(/;\s*/)
+                    .map((item) => item.trim())
+                    .filter(Boolean);
+            }
+            return [fallback];
+        },
+        scrollToErrors() {
+            this.$nextTick(() => {
+                const el = this.$refs.errorBlock;
+                if (!el) {
+                    return;
+                }
+                const top = el.getBoundingClientRect().top + window.scrollY - 16;
+                window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+                if (typeof el.focus === 'function') {
+                    el.focus({ preventScroll: true });
+                }
+            });
+        },
         syncSelectionFromResponse(data) {
             const sel = data?.selection || {};
             this.suppressSelectionWatch = true;
@@ -145,6 +184,7 @@ export default {
             this.properties = data.properties || [];
             this.basket = data.basket || this.basket;
             this.totals = data.totals || this.totals;
+            this.pruneStaleProperties(this.properties);
             this.mergeIncomingProperties(this.properties);
             this.syncSelectionFromResponse(data);
         },
@@ -154,6 +194,30 @@ export default {
                 return found || '';
             }
             return String(value ?? '').trim();
+        },
+        pruneStaleProperties(properties) {
+            const allowedKeys = new Set();
+            for (const property of properties) {
+                if (property.code) {
+                    allowedKeys.add(String(property.code));
+                }
+                if (property.id) {
+                    allowedKeys.add(String(property.id));
+                }
+            }
+
+            const next = {};
+            let changed = false;
+            for (const [key, value] of Object.entries(this.selection.properties)) {
+                if (allowedKeys.has(String(key))) {
+                    next[key] = value;
+                } else {
+                    changed = true;
+                }
+            }
+            if (changed) {
+                this.selection.properties = next;
+            }
         },
         mergeIncomingProperties(properties) {
             const next = { ...this.selection.properties };
@@ -187,7 +251,7 @@ export default {
         },
         async loadInit() {
             this.loading = true;
-            this.error = '';
+            this.clearErrors();
             try {
                 const { res, data } = await apiGet(catalogApiUrl('checkout/init'));
                 if (!res.ok || !data.success) {
@@ -195,7 +259,7 @@ export default {
                         window.location.href = '/cart/';
                         return;
                     }
-                    this.error = data.error || 'Не удалось загрузить оформление заказа';
+                    this.setErrors(this.extractApiErrors(data, 'Не удалось загрузить оформление заказа'));
                     return;
                 }
 
@@ -217,7 +281,7 @@ export default {
 
                 await this.calculate(false);
             } catch (e) {
-                this.error = 'Ошибка загрузки оформления заказа';
+                this.setErrors('Ошибка загрузки оформления заказа');
             } finally {
                 this.loading = false;
             }
@@ -229,7 +293,7 @@ export default {
 
             this.calculating = true;
             if (resetErrors) {
-                this.error = '';
+                this.clearErrors();
             }
 
             try {
@@ -239,32 +303,51 @@ export default {
                         window.location.href = '/cart/';
                         return;
                     }
-                    this.error = data.error || 'Не удалось пересчитать заказ';
+                    this.setErrors(this.extractApiErrors(data, 'Не удалось пересчитать заказ'));
                     return;
                 }
 
                 this.applyCalculateResponse(data);
             } catch (e) {
-                this.error = 'Ошибка пересчёта заказа';
+                this.setErrors('Ошибка пересчёта заказа');
             } finally {
                 this.calculating = false;
             }
         },
         validateClient() {
+            const errors = [];
+
+            if (this.selection.personTypeId <= 0) {
+                errors.push('Выберите тип покупателя');
+            }
+            if (!this.selection.locationCode) {
+                errors.push('Выберите местоположение');
+            }
+            if (!this.selection.deliveryId) {
+                errors.push('Выберите способ доставки');
+            }
+            if (!this.selection.paySystemId) {
+                errors.push('Выберите способ оплаты');
+            }
+
             const propertiesState = this.syncPropertyFields();
             for (const property of this.properties) {
-                if (!property.required) continue;
+                if (!property.required) {
+                    continue;
+                }
                 const keys = [property.code, property.id ? String(property.id) : ''].filter(Boolean);
                 const value = keys.map((key) => propertiesState[key]).find((item) => String(item ?? '').trim() !== '');
                 if (!String(value ?? '').trim()) {
-                    this.error = `Заполните поле: ${property.name}`;
-                    return false;
+                    errors.push(`Заполните поле: ${property.name}`);
                 }
             }
-            if (!this.selection.deliveryId || !this.selection.paySystemId) {
-                this.error = 'Выберите доставку и способ оплаты';
+
+            if (errors.length) {
+                this.setErrors(errors);
                 return false;
             }
+
+            this.clearErrors();
             return true;
         },
         async submitOrder() {
@@ -273,12 +356,12 @@ export default {
             }
 
             this.submitting = true;
-            this.error = '';
+            this.clearErrors();
 
             try {
                 const { res, data } = await apiPost(catalogApiUrl('checkout/submit'), this.buildPayload());
                 if (!res.ok || !data.success) {
-                    this.error = data.error || 'Не удалось оформить заказ';
+                    this.setErrors(this.extractApiErrors(data, 'Не удалось оформить заказ'));
                     return;
                 }
 
@@ -292,7 +375,7 @@ export default {
                     return;
                 }
             } catch (e) {
-                this.error = 'Ошибка оформления заказа';
+                this.setErrors('Ошибка оформления заказа');
             } finally {
                 this.submitting = false;
             }
@@ -304,7 +387,19 @@ export default {
 
             <template v-else>
                 <h1 class="checkout__title">Оформление заказа</h1>
-                <p v-if="error" class="checkout_error">{{ error }}</p>
+                <div
+                    v-if="errors.length"
+                    ref="errorBlock"
+                    class="checkout_error"
+                    tabindex="-1"
+                    role="alert"
+                    aria-live="assertive"
+                >
+                    <p class="checkout_error__title">Исправьте ошибки:</p>
+                    <ul class="checkout_error__list">
+                        <li v-for="(message, index) in errors" :key="index">{{ message }}</li>
+                    </ul>
+                </div>
 
                 <div class="checkout_layout">
                     <div class="checkout_main">
@@ -335,7 +430,7 @@ export default {
                         <CheckoutPropertiesForm
                             ref="propertiesForm"
                             v-model="selection.properties"
-                            :properties="properties"
+                            :properties="canShowProperties ? properties : []"
                             :disabled="!canShowProperties"
                         />
 

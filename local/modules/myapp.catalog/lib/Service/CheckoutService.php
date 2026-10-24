@@ -118,9 +118,24 @@ class CheckoutService
         $paySystemId = (int)($selection['paySystemId'] ?? 0);
 
         if ($personTypeId <= 0 || $locationCode === '' || $deliveryId <= 0 || $paySystemId <= 0) {
+            $errors = [];
+            if ($personTypeId <= 0) {
+                $errors[] = 'Выберите тип покупателя';
+            }
+            if ($locationCode === '') {
+                $errors[] = 'Выберите местоположение';
+            }
+            if ($deliveryId <= 0) {
+                $errors[] = 'Выберите способ доставки';
+            }
+            if ($paySystemId <= 0) {
+                $errors[] = 'Выберите способ оплаты';
+            }
+
             return [
                 'success' => false,
-                'error' => 'Заполните тип покупателя, местоположение, доставку и оплату',
+                'error' => implode('; ', $errors),
+                'errors' => $errors,
             ];
         }
 
@@ -143,15 +158,19 @@ class CheckoutService
             return [
                 'success' => false,
                 'error' => implode('; ', $propertyErrors),
+                'errors' => $propertyErrors,
                 'propertyErrors' => $propertyErrors,
             ];
         }
 
         $saveResult = $order->save();
         if (!$saveResult->isSuccess()) {
+            $errors = $saveResult->getErrorMessages();
+
             return [
                 'success' => false,
-                'error' => implode('; ', $saveResult->getErrorMessages()),
+                'error' => implode('; ', $errors),
+                'errors' => $errors,
             ];
         }
 
@@ -604,11 +623,10 @@ class CheckoutService
             if (self::isLocationPropertyMeta($prop)) {
                 continue;
             }
-            if (!$propertyValue->isRequired() && !$propertyValue->getPropertyId()) {
+            if (($prop['ACTIVE'] ?? 'Y') !== 'Y') {
                 continue;
             }
-
-            if (method_exists($propertyValue, 'isEnabled') && !$propertyValue->isEnabled()) {
+            if (!self::isOrderPropertyApplicable($propertyValue, $order)) {
                 continue;
             }
 
@@ -641,6 +659,42 @@ class CheckoutService
         }
 
         return $result;
+    }
+
+    private static function isOrderPropertyApplicable($propertyValue, Order $order): bool
+    {
+        $relations = $propertyValue->getRelations();
+        if (empty($relations) || !is_array($relations)) {
+            return true;
+        }
+
+        try {
+            $paymentIds = array_map('intval', $order->getPaymentSystemId());
+            $deliveryIds = array_map('intval', $order->getDeliverySystemId());
+        } catch (\Throwable $e) {
+            return false;
+        }
+
+        foreach ($relations as $relation) {
+            if (!is_array($relation)) {
+                continue;
+            }
+
+            $entityId = (int)($relation['ENTITY_ID'] ?? 0);
+            $entityType = (string)($relation['ENTITY_TYPE'] ?? '');
+            if ($entityId <= 0) {
+                continue;
+            }
+
+            if ($entityType === 'P' && in_array($entityId, $paymentIds, true)) {
+                return true;
+            }
+            if ($entityType === 'D' && in_array($entityId, $deliveryIds, true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static function validateRequiredProperties(Order $order, array $selection): array
@@ -861,7 +915,7 @@ class CheckoutService
 
     /**
      * @param mixed $propertyMeta
-     * @return array{ID:int,CODE:string,NAME:string,TYPE:string,IS_LOCATION:string,IS_ZIP:string}|null
+     * @return array{ID:int,CODE:string,NAME:string,TYPE:string,IS_LOCATION:string,IS_ZIP:string,ACTIVE:string}|null
      */
     private static function normalizeOrderPropertyMeta(mixed $propertyMeta): ?array
     {
@@ -873,6 +927,7 @@ class CheckoutService
                 'TYPE' => (string)($propertyMeta['TYPE'] ?? ''),
                 'IS_LOCATION' => (string)($propertyMeta['IS_LOCATION'] ?? ''),
                 'IS_ZIP' => (string)($propertyMeta['IS_ZIP'] ?? ''),
+                'ACTIVE' => (string)($propertyMeta['ACTIVE'] ?? 'Y'),
             ];
         }
 
@@ -885,6 +940,7 @@ class CheckoutService
                     'TYPE' => (string)$propertyMeta->getType(),
                     'IS_LOCATION' => (string)$propertyMeta->getField('IS_LOCATION'),
                     'IS_ZIP' => (string)$propertyMeta->getField('IS_ZIP'),
+                    'ACTIVE' => (string)$propertyMeta->getField('ACTIVE'),
                 ];
             }
         }

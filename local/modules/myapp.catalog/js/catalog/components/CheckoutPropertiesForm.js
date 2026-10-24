@@ -67,7 +67,8 @@ export default {
     template: `
         <section class="checkout_section" :class="{ 'checkout_section--disabled': disabled }">
             <h2 class="checkout_section__title">Данные получателя</h2>
-            <div v-if="!properties.length" class="checkout_option__meta">Заполните предыдущие шаги, чтобы увидеть поля заказа.</div>
+            <div v-if="disabled" class="checkout_option__meta">Выберите тип покупателя, местоположение, доставку и способ оплаты, чтобы увидеть поля получателя.</div>
+            <div v-else-if="!properties.length" class="checkout_option__meta">Для выбранных условий дополнительные поля не требуются.</div>
             <div v-for="property in properties" :key="property.id" class="checkout_field">
                 <label :for="'prop-' + property.id">
                     {{ property.name }}<span v-if="property.required"> *</span>
