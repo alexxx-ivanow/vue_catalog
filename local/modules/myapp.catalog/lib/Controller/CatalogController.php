@@ -57,8 +57,8 @@ class CatalogController extends BasePageController
             : null;
 
         $filters = CatalogService::getFilters($id);
-        $minPrice = (float)($filters['price']['min'] ?? 0);
-        $maxPrice = (float)($filters['price']['max'] ?? 0);
+        $minPrice = (int)($filters['price']['min'] ?? 0);
+        $maxPrice = (int)($filters['price']['max'] ?? 0);
 
         if ($priceFrom === null || $priceFrom <= 0) {
             $priceFrom = $minPrice;

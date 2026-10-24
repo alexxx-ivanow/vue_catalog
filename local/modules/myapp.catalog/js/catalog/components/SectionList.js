@@ -2,6 +2,7 @@ import ProductCard from './ProductCard.js';
 import CatalogPagination from './CatalogPagination.js';
 import CatalogFilter from './CatalogFilter.js';
 import { catalogApiUrl, getReadHeaders } from '../apiClient.js';
+import { clampFilterPrices, normalizePriceBounds } from '../filterPriceBounds.js';
 
 const SKELETON_PRODUCT_COUNT = 8;
 const DEFAULT_LIMIT = 12;
@@ -61,26 +62,6 @@ function readInitialStateFromUrl() {
     };
 }
 
-function clampFilterPrices(filter, filterMeta) {
-    const minPrice = Number(filterMeta?.price?.min ?? 0);
-    const maxPrice = Number(filterMeta?.price?.max ?? 0);
-    const next = { ...filter };
-
-    if (!Number.isFinite(next.price_from) || next.price_from <= 0) {
-        next.price_from = minPrice;
-    } else {
-        next.price_from = Math.max(minPrice, Math.min(next.price_from, maxPrice));
-    }
-
-    if (!Number.isFinite(next.price_to) || next.price_to <= 0) {
-        next.price_to = maxPrice;
-    } else {
-        next.price_to = Math.max(minPrice, Math.min(next.price_to, maxPrice));
-    }
-
-    return next;
-}
-
 function readInitialSectionFromPage(urlState) {
     const pageType = String(window.__PAGE_DATA__?.page?.type || '');
     const section = window.__PAGE_DATA__?.section;
@@ -111,10 +92,7 @@ function readInitialSectionFromPage(urlState) {
             manufacturers: Array.isArray(filterMeta.manufacturers) ? filterMeta.manufacturers : [],
             sizes: Array.isArray(filterMeta.sizes) ? filterMeta.sizes : [],
             materials: Array.isArray(filterMeta.materials) ? filterMeta.materials : [],
-            price: {
-                min: Number(filterMeta.price?.min ?? 0),
-                max: Number(filterMeta.price?.max ?? 0),
-            },
+            price: normalizePriceBounds(filterMeta),
         },
         filter: clampFilterPrices(urlState.filter, filterMeta),
     };
@@ -182,8 +160,7 @@ export default {
                 params.materials = this.store.filter.materials;
             }
 
-            const minPrice = Number(this.store.filterMeta.price?.min ?? 0);
-            const maxPrice = Number(this.store.filterMeta.price?.max ?? 0);
+            const { min: minPrice, max: maxPrice } = normalizePriceBounds(this.store.filterMeta);
             if (Number(this.store.filter.price_from) > minPrice) {
                 params.price_from = this.store.filter.price_from;
             }
@@ -206,8 +183,11 @@ export default {
                     throw new Error(data?.error || 'Ошибка загрузки фильтров');
                 }
 
-                this.store.filterMeta = data;
-                this.store.filter = clampFilterPrices(this.store.filter, data);
+                this.store.filterMeta = {
+                    ...data,
+                    price: normalizePriceBounds(data),
+                };
+                this.store.filter = clampFilterPrices(this.store.filter, this.store.filterMeta);
             } catch (error) {
                 console.error('Ошибка загрузки фильтров: ', error);
             } finally {
@@ -282,8 +262,7 @@ export default {
             this.store.filter.sizes.forEach((id) => nextUrl.searchParams.append('sizes[]', String(id)));
             this.store.filter.materials.forEach((name) => nextUrl.searchParams.append('materials[]', String(name)));
 
-            const minPrice = Number(this.store.filterMeta.price?.min ?? 0);
-            const maxPrice = Number(this.store.filterMeta.price?.max ?? 0);
+            const { min: minPrice, max: maxPrice } = normalizePriceBounds(this.store.filterMeta);
             if (Number(this.store.filter.price_from) > minPrice) {
                 nextUrl.searchParams.set('price_from', String(this.store.filter.price_from));
             }

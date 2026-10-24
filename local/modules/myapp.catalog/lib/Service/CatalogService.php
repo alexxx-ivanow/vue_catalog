@@ -696,8 +696,11 @@ class CatalogService
         ";
         $row = self::queryWithPerf($db, $priceSql, $perfForQueries, 'filters_price_minmax')->fetch();
 
-        $minPrice = (float)($row['MIN_PRICE'] ?? 0);
-        $maxPrice = (float)($row['MAX_PRICE'] ?? 100000);
+        $minPrice = (int)floor((float)($row['MIN_PRICE'] ?? 0));
+        $maxPrice = (int)ceil((float)($row['MAX_PRICE'] ?? 100000));
+        if ($maxPrice < $minPrice) {
+            $maxPrice = $minPrice;
+        }
 
         $result = [
             'manufacturers' => $manufacturers,
