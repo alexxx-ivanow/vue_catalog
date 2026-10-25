@@ -105,6 +105,7 @@ $tabControl->Begin();
             <label class="adm-designed-checkbox-label" for="MYAPP_CATALOG_USE_BITRIX_VUE"></label>
         </td>
     </tr>
+    <tr class="heading"><td colspan="2"><?= Loc::getMessage('MYAPP_CATALOG_OPT_ORDER_SECTION') ?></td></tr>
     <tr>
         <td width="50%" class="adm-detail-content-cell-l">
             <label for="MYAPP_CATALOG_AUTO_LOGIN_GUEST">
@@ -125,6 +126,7 @@ $tabControl->Begin();
             <label class="adm-designed-checkbox-label" for="MYAPP_CATALOG_AUTO_LOGIN_GUEST"></label>
         </td>
     </tr>
+    <tr class="heading"><td colspan="2"><?= Loc::getMessage('MYAPP_CATALOG_OPT_FILTER_SECTION') ?></td></tr>
     <tr>
         <td width="50%" class="adm-detail-content-cell-l">
             <label for="MYAPP_CATALOG_SHOW_FILTER">
@@ -190,6 +192,7 @@ $tabControl->Begin();
             </button>
         </td>
     </tr>
+    <tr class="heading"><td colspan="2"><?= Loc::getMessage('MYAPP_CATALOG_OPT_CATALOG_SECTION') ?></td></tr>
     <tr>
         <td width="50%" class="adm-detail-content-cell-l">
             <label for="MYAPP_CATALOG_IBLOCK_ID">
@@ -198,12 +201,13 @@ $tabControl->Begin();
         </td>
         <td width="50%" class="adm-detail-content-cell-r">
             <input
-                type="number"
-                min="1"
-                step="1"
+                type="text"
+                inputmode="numeric"
+                pattern="[0-9]*"
                 id="MYAPP_CATALOG_IBLOCK_ID"
                 name="<?= htmlspecialcharsbx($optCatalogIblockId) ?>"
                 value="<?= (int)$catalogIblockId ?>"
+                maxlength="10"
             >
         </td>
     </tr>

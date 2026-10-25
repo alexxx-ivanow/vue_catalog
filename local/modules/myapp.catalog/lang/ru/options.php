@@ -15,3 +15,6 @@ $MESS['MYAPP_CATALOG_OPT_FILTER_PROPS'] = 'Свойства в фильтре';
 $MESS['MYAPP_CATALOG_OPT_FILTER_PROPS_HINT'] = 'Символьные коды свойств инфоблока. Каждая строка — одно свойство. Пустой список оставляет в фильтре только цену';
 $MESS['MYAPP_CATALOG_OPT_FILTER_PROPS_ADD'] = 'Добавить свойство';
 $MESS['MYAPP_CATALOG_OPT_FILTER_PROPS_REMOVE'] = 'Удалить';
+$MESS['MYAPP_CATALOG_OPT_CATALOG_SECTION'] = 'Каталог';
+$MESS['MYAPP_CATALOG_OPT_FILTER_SECTION'] = 'Фильтр';
+$MESS['MYAPP_CATALOG_OPT_ORDER_SECTION'] = 'Оформление заказа';
