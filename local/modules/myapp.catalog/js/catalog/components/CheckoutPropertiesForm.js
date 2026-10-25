@@ -22,7 +22,10 @@ export default {
                 const found = value.map((item) => this.normalizeValue(item)).find((item) => item !== '');
                 return found || '';
             }
-            return String(value ?? '').trim();
+            return String(value ?? '');
+        },
+        isEmptyValue(value) {
+            return this.normalizeValue(value).trim() === '';
         },
         updateField(property, value) {
             const next = { ...this.modelValue };
@@ -35,7 +38,7 @@ export default {
         fieldValue(property) {
             for (const key of this.fieldKeys(property)) {
                 const current = this.normalizeValue(this.modelValue[key]);
-                if (current !== '') {
+                if (!this.isEmptyValue(current)) {
                     return current;
                 }
             }
@@ -47,15 +50,16 @@ export default {
                 const keys = this.fieldKeys(property);
                 const el = document.getElementById(`prop-${property.id}`);
                 let value = el ? this.normalizeValue(el.value) : '';
-                if (!value) {
-                    value = keys.map((key) => this.normalizeValue(next[key])).find(Boolean) || '';
+                if (this.isEmptyValue(value)) {
+                    value = keys.map((key) => this.normalizeValue(next[key])).find((item) => !this.isEmptyValue(item)) || '';
                 }
-                if (!value) {
+                if (this.isEmptyValue(value)) {
                     value = this.normalizeValue(property.value);
                 }
-                if (!value) {
+                if (this.isEmptyValue(value)) {
                     continue;
                 }
+                value = value.trim();
                 for (const key of keys) {
                     next[key] = value;
                 }

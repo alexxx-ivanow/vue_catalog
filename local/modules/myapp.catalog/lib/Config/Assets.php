@@ -14,6 +14,8 @@ final class Assets
 
     public const OPT_CATALOG_IBLOCK_ID = 'catalog_iblock_id';
 
+    public const OPT_AUTO_LOGIN_AFTER_GUEST_ORDER = 'auto_login_after_guest_order';
+
     public const DEFAULT_CATALOG_IBLOCK_ID = 2;
 
     /** Базовый URL JSON API Vue-каталога (от document root, без завершающего слэша). */
@@ -51,6 +53,11 @@ final class Assets
         );
 
         return $iblockId > 0 ? $iblockId : self::DEFAULT_CATALOG_IBLOCK_ID;
+    }
+
+    public static function autoLoginAfterGuestOrder(): bool
+    {
+        return Option::get(self::MODULE_ID, self::OPT_AUTO_LOGIN_AFTER_GUEST_ORDER, 'N') === 'Y';
     }
 
     /**

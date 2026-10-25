@@ -1190,11 +1190,44 @@ img {
     position: relative;
 }
 
+.checkout_location__field {
+    position: relative;
+}
+
 .checkout_location__input {
     width: 100%;
-    padding: 10px 12px;
+    padding: 10px 40px 10px 12px;
     border: 1px solid #ccc;
     border-radius: 6px;
+}
+
+.checkout_location__clear {
+    position: absolute;
+    top: 50%;
+    right: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #666;
+    cursor: pointer;
+    transform: translateY(-50%);
+}
+
+.checkout_location__clear:hover {
+    color: #111;
+    background: #f3f3f3;
+}
+
+.checkout_location__clear:disabled {
+    cursor: default;
+    opacity: 0.4;
 }
 
 .checkout_location__dropdown {
@@ -1222,6 +1255,12 @@ img {
 
 .checkout_location__item:hover {
     background: #f5f5f5;
+}
+
+.checkout_location__empty {
+    margin: 0;
+    padding: 10px 12px;
+    color: var(--color-text-muted);
 }
 
 .checkout_field {
@@ -1336,6 +1375,72 @@ img {
     padding: 24px;
     border: 1px solid #e5e5e5;
     border-radius: 8px;
+}
+
+.checkout_success__lead {
+    margin: 0 0 20px;
+    color: var(--color-text-muted);
+}
+
+.checkout_success__details {
+    margin: 0 0 24px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px 16px;
+}
+
+.checkout_success__details dt {
+    margin: 0;
+    color: var(--color-text-muted);
+}
+
+.checkout_success__details dd {
+    margin: 0;
+}
+
+.checkout_success__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.checkout_success__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 10px 20px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg);
+    color: var(--color-text);
+    text-decoration: none;
+    font-size: 15px;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.checkout_success__btn:hover {
+    border-color: #d0d0d0;
+    background: var(--color-bg-muted);
+}
+
+.checkout_success__btn--primary {
+    border-color: var(--color-accent);
+    background: var(--color-accent);
+    color: #fff;
+}
+
+.checkout_success__btn--primary:hover {
+    border-color: var(--color-accent-hover);
+    background: var(--color-accent-hover);
+    color: #fff;
+}
+
+.checkout_success__nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px 24px;
 }
 
 /* Главная: баннер на всю ширину окна без 100vw (иначе горизонтальный скролл) */

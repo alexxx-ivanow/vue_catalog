@@ -35,13 +35,18 @@ export async function apiGet(url) {
     return { res, data };
 }
 
-export async function apiPost(url, body) {
+export async function apiPost(url, body, options = {}) {
     const payload = { ...(body || {}), sessid: body?.sessid ?? getSessid() };
-    const res = await fetch(url, {
+    const fetchOptions = {
         method: 'POST',
         headers: getJsonHeaders(),
         body: JSON.stringify(payload),
-    });
+    };
+    if (options.signal) {
+        fetchOptions.signal = options.signal;
+    }
+
+    const res = await fetch(url, fetchOptions);
     const data = await res.json();
     if (data?.sessid) {
         window.__BX__.sessid = data.sessid;

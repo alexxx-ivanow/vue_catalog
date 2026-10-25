@@ -3,6 +3,7 @@ import CatalogPagination from './CatalogPagination.js';
 import CatalogFilter from './CatalogFilter.js';
 import { catalogApiUrl, getReadHeaders } from '../apiClient.js';
 import { clampFilterPrices, normalizePriceBounds } from '../filterPriceBounds.js';
+import { smoothScrollToElement } from '../scrollWithStickyHeader.js';
 
 const SKELETON_PRODUCT_COUNT = 8;
 const DEFAULT_LIMIT = 12;
@@ -271,7 +272,10 @@ export default {
             }
             window.history.replaceState({}, '', nextUrl.toString());
             if (!this.isInitialLoad) {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+                this.$nextTick(() => {
+                    const content = this.$el?.querySelector('.catalog-layout__content');
+                    smoothScrollToElement(content);
+                });
             }
         },
     },

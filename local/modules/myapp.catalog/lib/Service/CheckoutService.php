@@ -12,6 +12,7 @@ use Bitrix\Sale\PaySystem\BaseServiceHandler;
 use Bitrix\Sale\PaySystem\Manager as PaySystemManager;
 use Bitrix\Sale\PersonType;
 use MyApp\Catalog\Checkout\DeliveryUiResolver;
+use MyApp\Catalog\Config\Assets;
 
 class CheckoutService
 {
@@ -56,13 +57,35 @@ class CheckoutService
         }
 
         $limit = max(1, min(20, $limit));
-        $items = self::searchLocationsViaLocationTable($query, $limit);
+        $items = self::filterLocationsByQuery(
+            self::searchLocationsViaLocationTable($query, $limit),
+            $query
+        );
 
         if (empty($items)) {
-            $items = self::searchLocationsViaLegacyApi($query, $limit);
+            $items = self::filterLocationsByQuery(
+                self::searchLocationsViaLegacyApi($query, $limit),
+                $query
+            );
         }
 
         return ['items' => $items];
+    }
+
+    private static function filterLocationsByQuery(array $items, string $query): array
+    {
+        $needle = mb_strtolower($query);
+        $matched = [];
+
+        foreach ($items as $item) {
+            $name = mb_strtolower((string)($item['displayName'] ?? ''));
+            if ($name === '' || mb_strpos($name, $needle) === false) {
+                continue;
+            }
+            $matched[] = $item;
+        }
+
+        return $matched;
     }
 
     public static function calculate(array $selection): array
@@ -139,7 +162,30 @@ class CheckoutService
             ];
         }
 
-        $order = self::buildDraftOrder($selection, true);
+        global $USER;
+        $wasGuest = !is_object($USER) || !$USER->IsAuthorized();
+        $orderUserId = null;
+
+        if ($wasGuest) {
+            $userResolved = CheckoutUserService::resolveUserIdForOrder($selection, true);
+            if ($userResolved['error'] !== '') {
+                return [
+                    'success' => false,
+                    'error' => $userResolved['error'],
+                    'errors' => [$userResolved['error']],
+                ];
+            }
+            if ($userResolved['userId'] <= 0) {
+                return [
+                    'success' => false,
+                    'error' => 'Не удалось определить пользователя для заказа',
+                ];
+            }
+            $orderUserId = $userResolved['userId'];
+            self::bindFuserToUser($orderUserId);
+        }
+
+        $order = self::buildDraftOrder($selection, true, $orderUserId);
         if (!$order) {
             return [
                 'success' => false,
@@ -179,17 +225,28 @@ class CheckoutService
         $orderId = (int)$order->getId();
         $accountNumber = (string)$order->getField('ACCOUNT_NUMBER');
 
-        $paymentInfo = self::resolvePaymentRedirect($order);
-        $successUrl = '/order/success/' . $orderId . '/';
+        CheckoutUserService::grantOrderViewAccess($orderId);
 
-        return [
+        if ($wasGuest && Assets::autoLoginAfterGuestOrder()) {
+            $orderUserId = (int)$order->getUserId();
+            if ($orderUserId > 0 && is_object($USER)) {
+                $USER->Authorize($orderUserId);
+            }
+        }
+
+        $paymentInfo = self::resolvePaymentRedirect($order);
+        self::storePaymentRedirectUrl($orderId, $paymentInfo['redirectUrl'] ?? null);
+        $successUrl = '/order/?order_id=' . $orderId;
+        $successPayload = self::buildOrderSuccessPayload($order, $paymentInfo);
+
+        return array_merge([
             'success' => true,
             'orderId' => $orderId,
             'accountNumber' => $accountNumber,
             'redirectUrl' => $paymentInfo['redirectUrl'],
             'successUrl' => $successUrl,
             'isOnlinePayment' => $paymentInfo['isOnline'],
-        ];
+        ], $successPayload);
     }
 
     public static function getOrderSuccessInfo(int $orderId): ?array
@@ -208,13 +265,9 @@ class CheckoutService
             return null;
         }
 
-        return [
-            'id' => $orderId,
-            'accountNumber' => (string)$order->getField('ACCOUNT_NUMBER'),
-            'price' => (float)$order->getPrice(),
-            'currency' => (string)$order->getCurrency(),
-            'dateInsert' => (string)$order->getField('DATE_INSERT'),
-        ];
+        $paymentInfo = self::buildPaymentInfoForDisplay($order);
+
+        return self::buildOrderSuccessPayload($order, $paymentInfo);
     }
 
     public static function getPersonTypes(): array
@@ -334,12 +387,18 @@ class CheckoutService
         return $items;
     }
 
-    private static function buildDraftOrder(array $selection, bool $forSave = false): ?Order
+    private static function buildDraftOrder(array $selection, bool $forSave = false, ?int $forcedUserId = null): ?Order
     {
         global $USER;
 
         $siteId = Context::getCurrent()->getSite();
         $userId = is_object($USER) && $USER->IsAuthorized() ? (int)$USER->GetID() : 0;
+        if ($forcedUserId !== null && $forcedUserId > 0) {
+            $userId = $forcedUserId;
+        }
+        if ($forSave && $userId <= 0) {
+            return null;
+        }
         $personTypeId = (int)($selection['personTypeId'] ?? 0);
 
         if ($personTypeId <= 0) {
@@ -821,7 +880,7 @@ class CheckoutService
             }
 
             $isOnline = true;
-            $initResult = $service->initiatePay($payment, $request, BaseServiceHandler::REDIRECT);
+            $initResult = $service->initiatePay($payment, $request, self::paySystemInitiateMode());
             if ($initResult->isSuccess()) {
                 $redirectUrl = (string)$initResult->getPaymentUrl();
             }
@@ -838,13 +897,130 @@ class CheckoutService
     {
         global $USER;
 
+        $orderId = (int)$order->getId();
+        if (CheckoutUserService::hasOrderViewAccess($orderId)) {
+            return true;
+        }
+
         $orderUserId = (int)$order->getUserId();
         if ($orderUserId > 0 && is_object($USER) && $USER->IsAuthorized()) {
             return (int)$USER->GetID() === $orderUserId;
         }
 
-        if ($orderUserId <= 0) {
+        $fuserId = (int)Fuser::getId();
+        if ($fuserId > 0 && (int)$order->getField('FUSER_ID') === $fuserId) {
             return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array{redirectUrl: ?string, isOnline: bool} $paymentInfo
+     */
+    private static function buildOrderSuccessPayload(Order $order, array $paymentInfo): array
+    {
+        $orderId = (int)$order->getId();
+        $dateInsert = $order->getField('DATE_INSERT');
+        $dateFormatted = '';
+        if ($dateInsert instanceof \Bitrix\Main\Type\DateTime) {
+            $dateFormatted = $dateInsert->format('d.m.Y H:i');
+        } elseif (is_string($dateInsert) && $dateInsert !== '') {
+            $dateFormatted = $dateInsert;
+        }
+
+        $isPaid = $order->isPaid();
+        $paymentUrl = $paymentInfo['redirectUrl'] ?? null;
+        $showPaymentLink = !empty($paymentInfo['isOnline']) && !$isPaid && is_string($paymentUrl) && $paymentUrl !== '';
+
+        return [
+            'id' => $orderId,
+            'accountNumber' => (string)$order->getField('ACCOUNT_NUMBER'),
+            'price' => (float)$order->getPrice(),
+            'currency' => (string)$order->getCurrency(),
+            'dateInsert' => (string)$dateInsert,
+            'dateFormatted' => $dateFormatted,
+            'isPaid' => $isPaid,
+            'paymentUrl' => $showPaymentLink ? $paymentUrl : null,
+            'showPaymentLink' => $showPaymentLink,
+            'printUrl' => self::resolvePrintUrl($order),
+        ];
+    }
+
+    private static function resolvePrintUrl(Order $order): ?string
+    {
+        $orderId = (int)$order->getId();
+        if ($orderId <= 0) {
+            return null;
+        }
+
+        return '/personal/order/payment/?ORDER_ID=' . $orderId;
+    }
+
+    private static function storePaymentRedirectUrl(int $orderId, ?string $redirectUrl): void
+    {
+        if ($orderId <= 0 || !is_string($redirectUrl) || $redirectUrl === '') {
+            return;
+        }
+
+        if (!isset($_SESSION['MYAPP_CATALOG_ORDER_PAYMENT_URL']) || !is_array($_SESSION['MYAPP_CATALOG_ORDER_PAYMENT_URL'])) {
+            $_SESSION['MYAPP_CATALOG_ORDER_PAYMENT_URL'] = [];
+        }
+
+        $_SESSION['MYAPP_CATALOG_ORDER_PAYMENT_URL'][$orderId] = $redirectUrl;
+    }
+
+    private static function getStoredPaymentRedirectUrl(int $orderId): ?string
+    {
+        if ($orderId <= 0) {
+            return null;
+        }
+
+        $url = $_SESSION['MYAPP_CATALOG_ORDER_PAYMENT_URL'][$orderId] ?? null;
+
+        return is_string($url) && $url !== '' ? $url : null;
+    }
+
+    /**
+     * @return array{redirectUrl: ?string, isOnline: bool}
+     */
+    private static function buildPaymentInfoForDisplay(Order $order): array
+    {
+        $orderId = (int)$order->getId();
+        $storedUrl = self::getStoredPaymentRedirectUrl($orderId);
+        $isOnline = self::orderHasUnpaidOnlinePayment($order);
+
+        if ($storedUrl !== null) {
+            return [
+                'redirectUrl' => $storedUrl,
+                'isOnline' => $isOnline,
+            ];
+        }
+
+        if ($isOnline && !$order->isPaid()) {
+            return [
+                'redirectUrl' => '/personal/order/payment/?ORDER_ID=' . $orderId,
+                'isOnline' => true,
+            ];
+        }
+
+        return [
+            'redirectUrl' => null,
+            'isOnline' => false,
+        ];
+    }
+
+    private static function orderHasUnpaidOnlinePayment(Order $order): bool
+    {
+        foreach ($order->getPaymentCollection() as $payment) {
+            if ($payment->isPaid()) {
+                continue;
+            }
+
+            $service = PaySystemManager::getObjectById((int)$payment->getPaymentSystemId());
+            if ($service && !$service->isCash()) {
+                return true;
+            }
         }
 
         return false;
@@ -1106,6 +1282,35 @@ class CheckoutService
         }
 
         return (string)\Bitrix\Currency\CurrencyManager::getBaseCurrency();
+    }
+
+    private static function paySystemInitiateMode()
+    {
+        if (defined(BaseServiceHandler::class . '::STRING')) {
+            return BaseServiceHandler::STRING;
+        }
+
+        if (defined(BaseServiceHandler::class . '::STREAM')) {
+            return BaseServiceHandler::STREAM;
+        }
+
+        return true;
+    }
+
+    private static function bindFuserToUser(int $userId): void
+    {
+        if ($userId <= 0) {
+            return;
+        }
+
+        $fuserId = (int)Fuser::getId();
+        if ($fuserId <= 0) {
+            return;
+        }
+
+        if (class_exists('\CSaleUser')) {
+            \CSaleUser::Update($fuserId, ['USER_ID' => $userId]);
+        }
     }
 
     private static function ensureModules(): void

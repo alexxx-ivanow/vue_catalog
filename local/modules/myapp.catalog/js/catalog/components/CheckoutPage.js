@@ -7,6 +7,19 @@ import CheckoutPropertiesForm from './CheckoutPropertiesForm.js';
 import CheckoutBasketList from './CheckoutBasketList.js';
 import CheckoutTotalsSidebar from './CheckoutTotalsSidebar.js';
 import { apiGet, apiPost, catalogApiUrl } from '../apiClient.js';
+import { smoothScrollToElement } from '../scrollWithStickyHeader.js';
+
+function isCheckoutNavigationLocked() {
+    return window.__MYAPP_CHECKOUT_NAV_LOCK__ === true;
+}
+
+function lockCheckoutNavigation() {
+    window.__MYAPP_CHECKOUT_NAV_LOCK__ = true;
+}
+
+function unlockCheckoutNavigation() {
+    window.__MYAPP_CHECKOUT_NAV_LOCK__ = false;
+}
 
 export default {
     name: 'CheckoutPage',
@@ -48,6 +61,9 @@ export default {
                 deliveryExtra: {},
             },
             calcTimer: null,
+            calcRequestId: 0,
+            calcAbortController: null,
+            redirectingAfterSubmit: false,
             suppressSelectionWatch: false,
         };
     },
@@ -120,8 +136,42 @@ export default {
             };
         },
         scheduleCalculate(resetErrors = true) {
+            if (isCheckoutNavigationLocked() || this.redirectingAfterSubmit || this.submitting) {
+                return;
+            }
             clearTimeout(this.calcTimer);
             this.calcTimer = setTimeout(() => this.calculate(resetErrors), 350);
+        },
+        cancelCalculateTimer() {
+            clearTimeout(this.calcTimer);
+            this.calcTimer = null;
+        },
+        abortInflightCalculate() {
+            if (this.calcAbortController) {
+                this.calcAbortController.abort();
+                this.calcAbortController = null;
+            }
+        },
+        stopCalculateActivity() {
+            this.cancelCalculateTimer();
+            this.abortInflightCalculate();
+            this.calcRequestId += 1;
+        },
+        shouldRedirectEmptyBasketToCart() {
+            return !isCheckoutNavigationLocked()
+                && !this.redirectingAfterSubmit
+                && !this.submitting;
+        },
+        redirectAfterSubmit(url) {
+            const target = String(url ?? '').trim();
+            if (!target) {
+                return;
+            }
+
+            lockCheckoutNavigation();
+            this.redirectingAfterSubmit = true;
+            this.stopCalculateActivity();
+            window.location.replace(target);
         },
         clearErrors() {
             this.errors = [];
@@ -155,8 +205,7 @@ export default {
                 if (!el) {
                     return;
                 }
-                const top = el.getBoundingClientRect().top + window.scrollY - 16;
-                window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+                smoothScrollToElement(el);
                 if (typeof el.focus === 'function') {
                     el.focus({ preventScroll: true });
                 }
@@ -256,7 +305,9 @@ export default {
                 const { res, data } = await apiGet(catalogApiUrl('checkout/init'));
                 if (!res.ok || !data.success) {
                     if (data.code === 'EMPTY_BASKET') {
-                        window.location.href = '/cart/';
+                        if (this.shouldRedirectEmptyBasketToCart()) {
+                            window.location.replace('/cart/');
+                        }
                         return;
                     }
                     this.setErrors(this.extractApiErrors(data, 'Не удалось загрузить оформление заказа'));
@@ -287,9 +338,19 @@ export default {
             }
         },
         async calculate(resetErrors = true) {
-            if (this.selection.personTypeId <= 0) {
+            if (
+                isCheckoutNavigationLocked()
+                || this.redirectingAfterSubmit
+                || this.submitting
+                || this.selection.personTypeId <= 0
+            ) {
                 return;
             }
+
+            this.abortInflightCalculate();
+            const requestId = ++this.calcRequestId;
+            const controller = new AbortController();
+            this.calcAbortController = controller;
 
             this.calculating = true;
             if (resetErrors) {
@@ -297,10 +358,21 @@ export default {
             }
 
             try {
-                const { res, data } = await apiPost(catalogApiUrl('checkout/calculate'), this.buildPayload());
+                const { res, data } = await apiPost(
+                    catalogApiUrl('checkout/calculate'),
+                    this.buildPayload(),
+                    { signal: controller.signal }
+                );
+                if (
+                    requestId !== this.calcRequestId
+                    || isCheckoutNavigationLocked()
+                    || this.redirectingAfterSubmit
+                    || this.submitting
+                ) {
+                    return;
+                }
                 if (!res.ok || !data.success) {
                     if (data.code === 'EMPTY_BASKET') {
-                        window.location.href = '/cart/';
                         return;
                     }
                     this.setErrors(this.extractApiErrors(data, 'Не удалось пересчитать заказ'));
@@ -309,9 +381,19 @@ export default {
 
                 this.applyCalculateResponse(data);
             } catch (e) {
-                this.setErrors('Ошибка пересчёта заказа');
+                if (e?.name === 'AbortError') {
+                    return;
+                }
+                if (!this.redirectingAfterSubmit && !this.submitting) {
+                    this.setErrors('Ошибка пересчёта заказа');
+                }
             } finally {
-                this.calculating = false;
+                if (this.calcAbortController === controller) {
+                    this.calcAbortController = null;
+                }
+                if (requestId === this.calcRequestId) {
+                    this.calculating = false;
+                }
             }
         },
         validateClient() {
@@ -355,8 +437,13 @@ export default {
                 return;
             }
 
+            lockCheckoutNavigation();
             this.submitting = true;
+            this.redirectingAfterSubmit = true;
             this.clearErrors();
+            this.stopCalculateActivity();
+
+            let navigated = false;
 
             try {
                 const { res, data } = await apiPost(catalogApiUrl('checkout/submit'), this.buildPayload());
@@ -365,19 +452,22 @@ export default {
                     return;
                 }
 
-                if (data.redirectUrl) {
-                    window.location.href = data.redirectUrl;
-                    return;
-                }
+                const paymentUrl = String(data.redirectUrl ?? '').trim();
+                const successUrl = String(data.successUrl ?? '').trim();
+                const target = paymentUrl || successUrl;
 
-                if (data.successUrl) {
-                    window.location.href = data.successUrl;
-                    return;
+                if (target) {
+                    this.redirectAfterSubmit(target);
+                    navigated = true;
                 }
             } catch (e) {
                 this.setErrors('Ошибка оформления заказа');
             } finally {
-                this.submitting = false;
+                if (!navigated) {
+                    unlockCheckoutNavigation();
+                    this.redirectingAfterSubmit = false;
+                    this.submitting = false;
+                }
             }
         },
     },

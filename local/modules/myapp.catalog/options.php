@@ -18,10 +18,16 @@ Loc::loadMessages(__FILE__);
 $moduleId = 'myapp.catalog';
 $optUseBitrixVue = 'use_bitrix_vue';
 $optCatalogIblockId = 'catalog_iblock_id';
+$optAutoLoginAfterGuestOrder = 'auto_login_after_guest_order';
 $defaultCatalogIblockId = 2;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
     Option::set($moduleId, $optUseBitrixVue, isset($_POST[$optUseBitrixVue]) ? 'Y' : 'N');
+    Option::set(
+        $moduleId,
+        $optAutoLoginAfterGuestOrder,
+        isset($_POST[$optAutoLoginAfterGuestOrder]) ? 'Y' : 'N'
+    );
 
     $postedIblockId = (int)($_POST[$optCatalogIblockId] ?? 0);
     if ($postedIblockId > 0) {
@@ -30,6 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
 }
 
 $useBitrixVue = Option::get($moduleId, $optUseBitrixVue, 'N') === 'Y';
+$autoLoginAfterGuestOrder = Option::get($moduleId, $optAutoLoginAfterGuestOrder, 'N') === 'Y';
 $catalogIblockId = (int)Option::get($moduleId, $optCatalogIblockId, (string)$defaultCatalogIblockId);
 if ($catalogIblockId <= 0) {
     $catalogIblockId = $defaultCatalogIblockId;
@@ -69,6 +76,26 @@ $tabControl->Begin();
                 <?= $useBitrixVue ? 'checked' : '' ?>
             >
             <label class="adm-designed-checkbox-label" for="MYAPP_CATALOG_USE_BITRIX_VUE"></label>
+        </td>
+    </tr>
+    <tr>
+        <td width="50%" class="adm-detail-content-cell-l">
+            <label for="MYAPP_CATALOG_AUTO_LOGIN_GUEST">
+                <?= Loc::getMessage('MYAPP_CATALOG_OPT_AUTO_LOGIN_GUEST') ?>
+            </label>
+            <br>
+            <small><?= Loc::getMessage('MYAPP_CATALOG_OPT_AUTO_LOGIN_GUEST_HINT') ?></small>
+        </td>
+        <td width="50%" class="adm-detail-content-cell-r">
+            <input
+                type="checkbox"
+                class="adm-designed-checkbox"
+                id="MYAPP_CATALOG_AUTO_LOGIN_GUEST"
+                name="<?= htmlspecialcharsbx($optAutoLoginAfterGuestOrder) ?>"
+                value="Y"
+                <?= $autoLoginAfterGuestOrder ? 'checked' : '' ?>
+            >
+            <label class="adm-designed-checkbox-label" for="MYAPP_CATALOG_AUTO_LOGIN_GUEST"></label>
         </td>
     </tr>
     <tr>
