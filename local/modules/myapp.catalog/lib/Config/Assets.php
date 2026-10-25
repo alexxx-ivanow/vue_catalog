@@ -16,7 +16,18 @@ final class Assets
 
     public const OPT_AUTO_LOGIN_AFTER_GUEST_ORDER = 'auto_login_after_guest_order';
 
+    public const OPT_SHOW_CATALOG_FILTER = 'show_catalog_filter';
+
+    public const OPT_CATALOG_PRICE_TYPE_CODE = 'catalog_price_type_code';
+
+    public const OPT_FILTER_PROPERTY_CODES = 'catalog_filter_property_codes';
+
     public const DEFAULT_CATALOG_IBLOCK_ID = 2;
+
+    public const DEFAULT_CATALOG_PRICE_TYPE_CODE = 'BASE';
+
+    /** @var list<string> */
+    public const DEFAULT_FILTER_PROPERTY_CODES = ['MANUFACTURER', 'SIZE', 'MATERIAL'];
 
     /** Базовый URL JSON API Vue-каталога (от document root, без завершающего слэша). */
     public const API_V1_BASE = '/vue_catalog/api/v1';
@@ -58,6 +69,62 @@ final class Assets
     public static function autoLoginAfterGuestOrder(): bool
     {
         return Option::get(self::MODULE_ID, self::OPT_AUTO_LOGIN_AFTER_GUEST_ORDER, 'N') === 'Y';
+    }
+
+    public static function showCatalogFilter(): bool
+    {
+        return Option::get(self::MODULE_ID, self::OPT_SHOW_CATALOG_FILTER, 'Y') === 'Y';
+    }
+
+    public static function catalogPriceTypeCode(): string
+    {
+        $code = trim((string)Option::get(
+            self::MODULE_ID,
+            self::OPT_CATALOG_PRICE_TYPE_CODE,
+            self::DEFAULT_CATALOG_PRICE_TYPE_CODE
+        ));
+
+        return $code !== '' ? $code : self::DEFAULT_CATALOG_PRICE_TYPE_CODE;
+    }
+
+    /**
+     * Коды свойств фильтра. Пустая строка в опции — значения по умолчанию.
+     * Сохранённый JSON `[]` — в фильтре только цена.
+     *
+     * @return list<string>
+     */
+    public static function filterPropertyCodes(): array
+    {
+        $raw = (string)Option::get(self::MODULE_ID, self::OPT_FILTER_PROPERTY_CODES, '');
+        if ($raw === '') {
+            return self::DEFAULT_FILTER_PROPERTY_CODES;
+        }
+
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            return self::DEFAULT_FILTER_PROPERTY_CODES;
+        }
+
+        return self::normalizePropertyCodes($decoded);
+    }
+
+    /**
+     * @param mixed $codes
+     * @return list<string>
+     */
+    public static function normalizePropertyCodes(mixed $codes): array
+    {
+        $items = is_array($codes) ? $codes : [$codes];
+        $result = [];
+        foreach ($items as $code) {
+            $normalized = trim((string)$code);
+            if ($normalized === '' || !preg_match('/^[A-Za-z0-9_]+$/', $normalized)) {
+                continue;
+            }
+            $result[] = $normalized;
+        }
+
+        return array_values(array_unique($result));
     }
 
     /**

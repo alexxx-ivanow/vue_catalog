@@ -1,4 +1,5 @@
 import { catalogApiUrl, getReadHeaders } from '../apiClient.js';
+import { appendCatalogQuery } from '../filterQuery.js';
 
 export default {
     name: 'CatalogPagination',
@@ -30,20 +31,7 @@ export default {
                     page: String(page),
                     limit: String(this.limit),
                 });
-                Object.entries(this.requestParams || {}).forEach(([key, value]) => {
-                    if (Array.isArray(value)) {
-                        value.forEach((entry) => {
-                            if (entry !== null && entry !== undefined && entry !== '') {
-                                params.append(key + '[]', String(entry));
-                            }
-                        });
-                        return;
-                    }
-
-                    if (value !== null && value !== undefined && value !== '') {
-                        params.set(key, String(value));
-                    }
-                });
+                appendCatalogQuery(params, this.requestParams);
 
                 const res = await fetch(catalogApiUrl('catalog/goods') + '?' + params.toString(), {
                     headers: getReadHeaders(),

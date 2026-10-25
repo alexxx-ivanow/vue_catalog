@@ -1,9 +1,16 @@
+<?php
+
+use MyApp\Catalog\Config\Assets;
+
+$showCatalogFilter = Assets::showCatalogFilter();
+?>
 <div id="app-catalog">
     <div class="catalog-page">
         <h1 style="text-align:center;">
             <span class="catalog-skeleton-line catalog-skeleton-line--title" aria-hidden="true"></span>
         </h1>
         <div class="catalog-layout">
+            <?php if ($showCatalogFilter): ?>
             <aside class="catalog-layout__sidebar">
                 <div class="catalog-filter-skeleton" aria-hidden="true">
                     <div class="catalog-skeleton-line catalog-skeleton-line--block"></div>
@@ -11,6 +18,7 @@
                     <div class="catalog-skeleton-line catalog-skeleton-line--block catalog-skeleton-line--short"></div>
                 </div>
             </aside>
+            <?php endif; ?>
             <section class="catalog-layout__content">
                 <div class="section-subcategories section-subcategories--skeleton" aria-hidden="true">
                     <span class="section-subcategories__skeleton-item"></span>

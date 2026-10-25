@@ -14,9 +14,6 @@ export default {
     data() {
         return {
             openSections: {
-                manufacturers: false,
-                sizes: false,
-                materials: false,
                 price: true,
             },
             openSectionsInitialized: false,
@@ -45,14 +42,8 @@ export default {
     },
 
     computed: {
-        manufacturers() {
-            return Array.isArray(this.meta.manufacturers) ? this.meta.manufacturers : [];
-        },
-        sizes() {
-            return Array.isArray(this.meta.sizes) ? this.meta.sizes : [];
-        },
-        materials() {
-            return Array.isArray(this.meta.materials) ? this.meta.materials : [];
+        properties() {
+            return Array.isArray(this.meta.properties) ? this.meta.properties : [];
         },
         priceMeta() {
             const source = this.meta.price || {};
@@ -70,10 +61,11 @@ export default {
             get() {
                 const source = this.modelValue || {};
                 const { min, max } = this.priceSlider;
+                const properties = source.properties && typeof source.properties === 'object' && !Array.isArray(source.properties)
+                    ? source.properties
+                    : {};
                 return {
-                    manufacturers: Array.isArray(source.manufacturers) ? source.manufacturers : [],
-                    sizes: Array.isArray(source.sizes) ? source.sizes : [],
-                    materials: Array.isArray(source.materials) ? source.materials : [],
+                    properties,
                     price_from: source.price_from ?? min,
                     price_to: source.price_to ?? max,
                 };
@@ -147,32 +139,27 @@ export default {
             }
 
             const filter = this.localFilter;
-            const hasCheckbox =
-                filter.manufacturers.length > 0 ||
-                filter.sizes.length > 0 ||
-                filter.materials.length > 0;
+            const properties = filter.properties || {};
+            const hasCheckbox = Object.values(properties).some((list) => Array.isArray(list) && list.length > 0);
             const metaPriceReady = this.priceRangeUsable;
 
-            if (!metaPriceReady && !hasCheckbox) {
+            if (!metaPriceReady && !hasCheckbox && !this.properties.length) {
                 return;
             }
 
-            this.openSections = {
-                manufacturers: filter.manufacturers.length > 0,
-                sizes: filter.sizes.length > 0,
-                materials: filter.materials.length > 0,
-                price: true,
-            };
+            const openSections = { price: true };
+            this.properties.forEach((property) => {
+                const list = properties[property.code];
+                openSections[property.code] = Array.isArray(list) && list.length > 0;
+            });
+            this.openSections = openSections;
             this.openSectionsInitialized = true;
         },
         toggleSection(key) {
             if (key === 'price') {
                 return;
             }
-            if (!Object.prototype.hasOwnProperty.call(this.openSections, key)) {
-                return;
-            }
-            this.openSections[key] = !this.openSections[key];
+            this.openSections[key] = !this.isSectionOpen(key);
         },
         isSectionOpen(key) {
             if (key === 'price') {
@@ -180,30 +167,17 @@ export default {
             }
             return Boolean(this.openSections[key]);
         },
-        toggleInt(field, rawValue) {
-            const value = Number(rawValue);
-            const next = { ...this.localFilter };
-            const list = Array.isArray(next[field]) ? [...next[field]] : [];
-            const idx = list.indexOf(value);
-            if (idx >= 0) {
-                list.splice(idx, 1);
-            } else {
-                list.push(value);
-            }
-            next[field] = list;
-            this.localFilter = next;
-        },
-        toggleString(field, rawValue) {
+        toggleProperty(code, rawValue) {
             const value = String(rawValue);
-            const next = { ...this.localFilter };
-            const list = Array.isArray(next[field]) ? [...next[field]] : [];
-            const idx = list.indexOf(value);
+            const next = { ...this.localFilter, properties: { ...(this.localFilter.properties || {}) } };
+            const list = Array.isArray(next.properties[code]) ? [...next.properties[code]] : [];
+            const idx = list.findIndex((item) => String(item) === value);
             if (idx >= 0) {
                 list.splice(idx, 1);
             } else {
                 list.push(value);
             }
-            next[field] = list;
+            next.properties[code] = list;
             this.localFilter = next;
         },
         onPriceInput(field, rawValue) {
@@ -225,27 +199,28 @@ export default {
             this.$emit('apply');
         },
         collapseAllSections() {
-            this.openSections = {
-                manufacturers: false,
-                sizes: false,
-                materials: false,
-                price: true,
-            };
+            const openSections = { price: true };
+            this.properties.forEach((property) => {
+                openSections[property.code] = false;
+            });
+            this.openSections = openSections;
         },
         reset() {
             this.localFilter = {
-                manufacturers: [],
-                sizes: [],
-                materials: [],
+                properties: {},
                 price_from: this.priceSlider.min,
                 price_to: this.priceSlider.max,
             };
             this.collapseAllSections();
             this.$emit('apply');
         },
-        isChecked(field, rawValue) {
-            const list = this.localFilter[field] || [];
-            return list.includes(rawValue);
+        isChecked(code, rawValue) {
+            const list = (this.localFilter.properties || {})[code] || [];
+            const value = String(rawValue);
+            return list.some((item) => String(item) === value);
+        },
+        propertyValueKey(property, item) {
+            return property.valueKind === 'enum' ? item.id : item.value;
         },
     },
     template: `
@@ -319,91 +294,32 @@ export default {
             </div>
 
             <div
-                v-if="manufacturers.length"
+                v-for="property in properties"
+                :key="property.code"
                 class="catalog-filter__field"
-                :class="{ 'catalog-filter__field--open': isSectionOpen('manufacturers') }"
+                :class="{ 'catalog-filter__field--open': isSectionOpen(property.code) }"
             >
                 <button
                     type="button"
                     class="catalog-filter__field-head"
-                    :aria-expanded="isSectionOpen('manufacturers')"
-                    @click="toggleSection('manufacturers')"
+                    :aria-expanded="isSectionOpen(property.code)"
+                    @click="toggleSection(property.code)"
                 >
-                    <span class="catalog-filter__label">Производитель</span>
+                    <span class="catalog-filter__label">{{ property.name }}</span>
                     <span class="catalog-filter__toggle" aria-hidden="true"></span>
                 </button>
-                <div v-show="isSectionOpen('manufacturers')" class="catalog-filter__field-body">
+                <div v-show="isSectionOpen(property.code)" class="catalog-filter__field-body">
                     <label
                         class="catalog-filter__check"
-                        v-for="m in manufacturers"
-                        :key="m.ID"
+                        v-for="item in property.values"
+                        :key="property.code + '-' + propertyValueKey(property, item)"
                     >
                         <input
                             type="checkbox"
-                            :checked="isChecked('manufacturers', Number(m.ID))"
-                            @change="toggleInt('manufacturers', m.ID)"
+                            :checked="isChecked(property.code, propertyValueKey(property, item))"
+                            @change="toggleProperty(property.code, propertyValueKey(property, item))"
                         />
-                        <span>{{ m.VALUE }}</span>
-                    </label>
-                </div>
-            </div>
-
-            <div
-                v-if="sizes.length"
-                class="catalog-filter__field"
-                :class="{ 'catalog-filter__field--open': isSectionOpen('sizes') }"
-            >
-                <button
-                    type="button"
-                    class="catalog-filter__field-head"
-                    :aria-expanded="isSectionOpen('sizes')"
-                    @click="toggleSection('sizes')"
-                >
-                    <span class="catalog-filter__label">Размеры</span>
-                    <span class="catalog-filter__toggle" aria-hidden="true"></span>
-                </button>
-                <div v-show="isSectionOpen('sizes')" class="catalog-filter__field-body">
-                    <label
-                        class="catalog-filter__check"
-                        v-for="s in sizes"
-                        :key="s.ID"
-                    >
-                        <input
-                            type="checkbox"
-                            :checked="isChecked('sizes', Number(s.ID))"
-                            @change="toggleInt('sizes', s.ID)"
-                        />
-                        <span>{{ s.VALUE }}</span>
-                    </label>
-                </div>
-            </div>
-
-            <div
-                v-if="materials.length"
-                class="catalog-filter__field"
-                :class="{ 'catalog-filter__field--open': isSectionOpen('materials') }"
-            >
-                <button
-                    type="button"
-                    class="catalog-filter__field-head"
-                    :aria-expanded="isSectionOpen('materials')"
-                    @click="toggleSection('materials')"
-                >
-                    <span class="catalog-filter__label">Материал</span>
-                    <span class="catalog-filter__toggle" aria-hidden="true"></span>
-                </button>
-                <div v-show="isSectionOpen('materials')" class="catalog-filter__field-body">
-                    <label
-                        class="catalog-filter__check"
-                        v-for="m in materials"
-                        :key="m.VALUE"
-                    >
-                        <input
-                            type="checkbox"
-                            :checked="isChecked('materials', m.VALUE)"
-                            @change="toggleString('materials', m.VALUE)"
-                        />
-                        <span>{{ m.VALUE }}</span>
+                        <span>{{ item.value }}</span>
                     </label>
                 </div>
             </div>

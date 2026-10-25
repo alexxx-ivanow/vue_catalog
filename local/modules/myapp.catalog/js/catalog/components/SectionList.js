@@ -3,40 +3,11 @@ import CatalogPagination from './CatalogPagination.js';
 import CatalogFilter from './CatalogFilter.js';
 import { catalogApiUrl, getReadHeaders } from '../apiClient.js';
 import { clampFilterPrices, normalizePriceBounds } from '../filterPriceBounds.js';
+import { appendCatalogQuery, readPropertiesFromSearch } from '../filterQuery.js';
 import { smoothScrollToElement } from '../scrollWithStickyHeader.js';
 
 const SKELETON_PRODUCT_COUNT = 8;
 const DEFAULT_LIMIT = 12;
-
-function parseIntList(params, key) {
-    const values = [
-        ...params.getAll(key),
-        ...params.getAll(key + '[]'),
-    ];
-    const result = [];
-    values.forEach((value) => {
-        const intValue = Number(value);
-        if (Number.isFinite(intValue) && intValue > 0) {
-            result.push(intValue);
-        }
-    });
-    return [...new Set(result)];
-}
-
-function parseStringList(params, key) {
-    const values = [
-        ...params.getAll(key),
-        ...params.getAll(key + '[]'),
-    ];
-    const result = [];
-    values.forEach((value) => {
-        const str = String(value || '').trim();
-        if (str !== '') {
-            result.push(str);
-        }
-    });
-    return [...new Set(result)];
-}
 
 function readInitialStateFromUrl() {
     const params = new URLSearchParams(window.location.search);
@@ -54,12 +25,21 @@ function readInitialStateFromUrl() {
         page,
         limit,
         filter: {
-            manufacturers: parseIntList(params, 'manufacturers'),
-            sizes: parseIntList(params, 'sizes'),
-            materials: parseStringList(params, 'materials'),
+            properties: readPropertiesFromSearch(params),
             price_from: priceFromRaw !== null && priceFromRaw !== '' ? Number(priceFromRaw) : 0,
             price_to: priceToRaw !== null && priceToRaw !== '' ? Number(priceToRaw) : 0,
         },
+    };
+}
+
+function normalizeFilterMeta(filterMeta) {
+    const source = filterMeta && typeof filterMeta === 'object' && !Array.isArray(filterMeta)
+        ? filterMeta
+        : {};
+    return {
+        enabled: source.enabled !== false,
+        properties: Array.isArray(source.properties) ? source.properties : [],
+        price: normalizePriceBounds(source),
     };
 }
 
@@ -89,12 +69,7 @@ function readInitialSectionFromPage(urlState) {
         items: goods,
         sectionName: goods.sectionName || '',
         subsections: Array.isArray(goods.subsections) ? goods.subsections : [],
-        filterMeta: {
-            manufacturers: Array.isArray(filterMeta.manufacturers) ? filterMeta.manufacturers : [],
-            sizes: Array.isArray(filterMeta.sizes) ? filterMeta.sizes : [],
-            materials: Array.isArray(filterMeta.materials) ? filterMeta.materials : [],
-            price: normalizePriceBounds(filterMeta),
-        },
+        filterMeta: normalizeFilterMeta(filterMeta),
         filter: clampFilterPrices(urlState.filter, filterMeta),
     };
 }
@@ -120,15 +95,13 @@ export default {
                 subsections: initial ? initial.subsections : [],
                 loading: !initial,
                 filtersLoaded: Boolean(initial),
+                filterEnabled: initial
+                    ? initial.filterMeta.enabled !== false
+                    : window.__PAGE_DATA__?.section?.filter?.enabled !== false,
                 loadError: '',
                 filterMeta: initial
                     ? initial.filterMeta
-                    : {
-                        manufacturers: [],
-                        sizes: [],
-                        materials: [],
-                        price: { min: 0, max: 0 },
-                    },
+                    : normalizeFilterMeta(null),
                 filter: initial ? initial.filter : urlState.filter,
             },
             skeletonProductCount: SKELETON_PRODUCT_COUNT,
@@ -137,6 +110,9 @@ export default {
         };
     },
     async mounted() {
+        if (!this.store.filterEnabled) {
+            this.clearHiddenFilterQuery();
+        }
         if (this.hydratedFromPage) {
             this.isInitialLoad = false;
             return;
@@ -148,17 +124,40 @@ export default {
         this.isInitialLoad = false;
     },
     methods: {
+        clearHiddenFilterQuery() {
+            const nextUrl = new URL(window.location.href);
+            let changed = false;
+            ['price_from', 'price_to'].forEach((key) => {
+                if (nextUrl.searchParams.has(key)) {
+                    nextUrl.searchParams.delete(key);
+                    changed = true;
+                }
+            });
+            [...nextUrl.searchParams.keys()].forEach((key) => {
+                if (key.startsWith('props[')) {
+                    nextUrl.searchParams.delete(key);
+                    changed = true;
+                }
+            });
+            if (changed) {
+                window.history.replaceState({}, '', nextUrl.toString());
+            }
+        },
         buildFilterParams() {
-            const params = {};
+            if (!this.store.filterEnabled) {
+                return {};
+            }
 
-            if (this.store.filter.manufacturers.length) {
-                params.manufacturers = this.store.filter.manufacturers;
-            }
-            if (this.store.filter.sizes.length) {
-                params.sizes = this.store.filter.sizes;
-            }
-            if (this.store.filter.materials.length) {
-                params.materials = this.store.filter.materials;
+            const params = {};
+            const properties = this.store.filter.properties || {};
+            const props = {};
+            Object.entries(properties).forEach(([code, values]) => {
+                if (Array.isArray(values) && values.length) {
+                    props[code] = values;
+                }
+            });
+            if (Object.keys(props).length) {
+                params.props = props;
             }
 
             const { min: minPrice, max: maxPrice } = normalizePriceBounds(this.store.filterMeta);
@@ -184,10 +183,8 @@ export default {
                     throw new Error(data?.error || 'Ошибка загрузки фильтров');
                 }
 
-                this.store.filterMeta = {
-                    ...data,
-                    price: normalizePriceBounds(data),
-                };
+                this.store.filterMeta = normalizeFilterMeta(data);
+                this.store.filterEnabled = this.store.filterMeta.enabled !== false;
                 this.store.filter = clampFilterPrices(this.store.filter, this.store.filterMeta);
             } catch (error) {
                 console.error('Ошибка загрузки фильтров: ', error);
@@ -207,13 +204,7 @@ export default {
                     page: resetPage ? 1 : page,
                     limit: this.store.limit,
                 };
-                Object.entries(requestParams).forEach(([key, value]) => {
-                    if (Array.isArray(value)) {
-                        value.forEach((entry) => params.append(key + '[]', String(entry)));
-                    } else if (value !== null && value !== undefined && value !== '') {
-                        params.set(key, String(value));
-                    }
-                });
+                appendCatalogQuery(params, requestParams);
 
                 const res = await fetch(catalogApiUrl('catalog/goods') + '?' + params.toString(), {
                     headers: getReadHeaders(),
@@ -251,24 +242,33 @@ export default {
             } else {
                 nextUrl.searchParams.set('page', String(this.store.page));
             }
-            nextUrl.searchParams.delete('manufacturers[]');
-            nextUrl.searchParams.delete('manufacturers');
-            nextUrl.searchParams.delete('sizes[]');
-            nextUrl.searchParams.delete('sizes');
-            nextUrl.searchParams.delete('materials[]');
-            nextUrl.searchParams.delete('materials');
             nextUrl.searchParams.delete('price_from');
             nextUrl.searchParams.delete('price_to');
-            this.store.filter.manufacturers.forEach((id) => nextUrl.searchParams.append('manufacturers[]', String(id)));
-            this.store.filter.sizes.forEach((id) => nextUrl.searchParams.append('sizes[]', String(id)));
-            this.store.filter.materials.forEach((name) => nextUrl.searchParams.append('materials[]', String(name)));
+            [...nextUrl.searchParams.keys()].forEach((key) => {
+                if (key.startsWith('props[')) {
+                    nextUrl.searchParams.delete(key);
+                }
+            });
+            if (this.store.filterEnabled) {
+                const properties = this.store.filter.properties || {};
+                Object.entries(properties).forEach(([code, values]) => {
+                    if (!Array.isArray(values)) {
+                        return;
+                    }
+                    values.forEach((value) => {
+                        if (value !== null && value !== undefined && value !== '') {
+                            nextUrl.searchParams.append(`props[${code}][]`, String(value));
+                        }
+                    });
+                });
 
-            const { min: minPrice, max: maxPrice } = normalizePriceBounds(this.store.filterMeta);
-            if (Number(this.store.filter.price_from) > minPrice) {
-                nextUrl.searchParams.set('price_from', String(this.store.filter.price_from));
-            }
-            if (Number(this.store.filter.price_to) < maxPrice) {
-                nextUrl.searchParams.set('price_to', String(this.store.filter.price_to));
+                const { min: minPrice, max: maxPrice } = normalizePriceBounds(this.store.filterMeta);
+                if (Number(this.store.filter.price_from) > minPrice) {
+                    nextUrl.searchParams.set('price_from', String(this.store.filter.price_from));
+                }
+                if (Number(this.store.filter.price_to) < maxPrice) {
+                    nextUrl.searchParams.set('price_to', String(this.store.filter.price_to));
+                }
             }
             window.history.replaceState({}, '', nextUrl.toString());
             if (!this.isInitialLoad) {
@@ -286,7 +286,7 @@ export default {
                 <template v-else>{{ store.sectionName }}</template>
             </h1>
             <div class="catalog-layout">
-                <aside class="catalog-layout__sidebar">
+                <aside v-if="store.filterEnabled" class="catalog-layout__sidebar">
                     <div v-if="!store.filtersLoaded" class="catalog-filter-skeleton" aria-hidden="true">
                         <div class="catalog-skeleton-line catalog-skeleton-line--block"></div>
                         <div class="catalog-skeleton-line catalog-skeleton-line--block"></div>

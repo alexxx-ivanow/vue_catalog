@@ -4,6 +4,7 @@ namespace MyApp\Catalog\Controller;
 
 use Bitrix\Main\Context;
 use Bitrix\Main\Engine\Response\Json;
+use MyApp\Catalog\Config\Assets;
 use MyApp\Catalog\Service\CartService;
 use MyApp\Catalog\Service\CatalogService;
 
@@ -52,18 +53,20 @@ class ApiController
     {
         $this->releaseSessionLock();
         $request = $this->request();
-
-        $manufacturers = $this->normalizeIntList($request->get('manufacturer') ?? $request->get('manufacturers'));
-        $sizes = $this->normalizeIntList($request->get('size') ?? $request->get('sizes'));
-        $materials = $this->normalizeStringList($request->get('material') ?? $request->get('materials'));
+        $showFilter = Assets::showCatalogFilter();
+        $properties = $showFilter
+            ? CatalogService::parseRequestProperties($request->get('props'))
+            : [];
 
         $filter = [
-            'article'      => (string)($request->get('article') ?? ''),
-            'price_from'   => $request->get('price_from') !== null ? (float)$request->get('price_from') : null,
-            'price_to'     => $request->get('price_to') !== null ? (float)$request->get('price_to') : null,
-            'sizes'        => $sizes,
-            'manufacturers'=> $manufacturers,
-            'materials'    => $materials,
+            'article' => (string)($request->get('article') ?? ''),
+            'price_from' => $showFilter && $request->get('price_from') !== null && $request->get('price_from') !== ''
+                ? (float)$request->get('price_from')
+                : null,
+            'price_to' => $showFilter && $request->get('price_to') !== null && $request->get('price_to') !== ''
+                ? (float)$request->get('price_to')
+                : null,
+            'properties' => $properties,
         ];
 
         $page  = max(1, (int)$request->get('page') ?: 1);
@@ -266,39 +269,5 @@ class ApiController
 
         //return $this->jsonResponse(['error' => 'Внутренняя ошибка сервера'], 500);
         return $this->jsonResponse(['error' => $e->getMessage()], 500);
-    }
-
-    private function normalizeIntList(mixed $value): array
-    {
-        $items = is_array($value) ? $value : [$value];
-        $result = [];
-        foreach ($items as $item) {
-            if ($item === null || $item === '') {
-                continue;
-            }
-            $intValue = (int)$item;
-            if ($intValue > 0) {
-                $result[] = $intValue;
-            }
-        }
-
-        return array_values(array_unique($result));
-    }
-
-    private function normalizeStringList(mixed $value): array
-    {
-        $items = is_array($value) ? $value : [$value];
-        $result = [];
-        foreach ($items as $item) {
-            if ($item === null) {
-                continue;
-            }
-            $str = trim((string)$item);
-            if ($str !== '') {
-                $result[] = $str;
-            }
-        }
-
-        return array_values(array_unique($result));
     }
 }

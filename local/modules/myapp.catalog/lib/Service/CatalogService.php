@@ -148,7 +148,12 @@ class CatalogService
 
         // Кеш — включаем sectionId и нормализованный фильтр в ключ.
         ksort($filter);
-        $cacheKey = md5(serialize($filter) . '|' . $page . '|' . $limit . '|' . $sectionId);
+        $cacheKey = md5(
+            serialize($filter) . '|' . $page . '|' . $limit . '|' . $sectionId
+            . '|' . (Assets::showCatalogFilter() ? '1' : '0')
+            . '|' . Assets::catalogPriceTypeCode()
+            . '|' . implode(',', Assets::filterPropertyCodes())
+        );
         $cache = \Bitrix\Main\Data\Cache::createInstance();
         if (!$skipCache && $cache->initCache(3600, $cacheKey, '/catalog/goods/')) {
             $result = $cache->getVars();
@@ -253,65 +258,53 @@ class CatalogService
             )";
         }
 
-        $manufacturers = self::normalizeIntFilterList($filter['manufacturers'] ?? ($filter['manufacturer'] ?? []));
-        if (!empty($manufacturers)) {
-            $manufacturerIds = implode(',', array_map('intval', $manufacturers));
-            $joinParts[] = "INNER JOIN b_iblock_element_property p_manufacturer
-                ON p_manufacturer.IBLOCK_ELEMENT_ID = e.ID
-               AND p_manufacturer.IBLOCK_PROPERTY_ID = " . self::PROP_MANUFACTURER_ID . "
-               AND p_manufacturer.VALUE_ENUM IN ({$manufacturerIds})";
-            $needsDistinct = true;
-        }
-
-        $sizes = self::normalizeIntFilterList($filter['sizes'] ?? ($filter['size'] ?? []));
-        if (!empty($sizes)) {
-            $sizeIds = implode(',', array_map('intval', $sizes));
-            $joinParts[] = "INNER JOIN b_iblock_element_property p_size
-                ON p_size.IBLOCK_ELEMENT_ID = e.ID
-               AND p_size.IBLOCK_PROPERTY_ID = " . self::PROP_SIZES_ID . "
-               AND p_size.VALUE_ENUM IN ({$sizeIds})";
-            $needsDistinct = true;
-        }
-
-        $materials = self::normalizeStringFilterList($filter['materials'] ?? ($filter['material'] ?? []));
-        if (!empty($materials)) {
-            $materialPropertyId = self::getPropertyIdByCode(self::PROP_MATERIAL_CODE);
-            if ($materialPropertyId > 0) {
-                $materialValues = array_map(
-                    static fn(string $value): string => "'" . $sqlHelper->forSql($value) . "'",
-                    $materials
-                );
-                $materialValuesSql = implode(',', $materialValues);
-                $joinParts[] = "INNER JOIN b_iblock_element_property p_material
-                    ON p_material.IBLOCK_ELEMENT_ID = e.ID
-                   AND p_material.IBLOCK_PROPERTY_ID = {$materialPropertyId}
-                   AND p_material.VALUE IN ({$materialValuesSql})";
+        $selectedProperties = [];
+        $hasPriceFrom = false;
+        $hasPriceTo = false;
+        if (Assets::showCatalogFilter()) {
+            $rawProperties = is_array($filter['properties'] ?? null) ? $filter['properties'] : [];
+            $selectedProperties = self::normalizeSelectedProperties($rawProperties);
+            foreach ($selectedProperties as $index => $selected) {
+                $alias = 'p_filter_' . $index;
+                $propertyId = (int)$selected['def']['ID'];
+                if ($selected['def']['valueKind'] === 'enum') {
+                    $idsSql = implode(',', array_map('intval', $selected['values']));
+                    $valueSql = "{$alias}.VALUE_ENUM IN ({$idsSql})";
+                } else {
+                    $valuesSql = implode(',', array_map(
+                        static fn(string $value): string => "'" . $sqlHelper->forSql($value) . "'",
+                        $selected['values']
+                    ));
+                    $valueSql = "{$alias}.VALUE IN ({$valuesSql})";
+                }
+                $joinParts[] = "INNER JOIN b_iblock_element_property {$alias}
+                    ON {$alias}.IBLOCK_ELEMENT_ID = e.ID
+                   AND {$alias}.IBLOCK_PROPERTY_ID = {$propertyId}
+                   AND {$valueSql}";
                 $needsDistinct = true;
             }
-        }
 
-        $hasPriceFrom = isset($filter['price_from']) && $filter['price_from'] !== '' && $filter['price_from'] !== null;
-        $hasPriceTo = isset($filter['price_to']) && $filter['price_to'] !== '' && $filter['price_to'] !== null;
-        if ($hasPriceFrom || $hasPriceTo) {
-            $priceFrom = $hasPriceFrom ? (float)$filter['price_from'] : null;
-            $priceTo = $hasPriceTo ? (float)$filter['price_to'] : null;
+            $hasPriceFrom = isset($filter['price_from']) && $filter['price_from'] !== '' && $filter['price_from'] !== null;
+            $hasPriceTo = isset($filter['price_to']) && $filter['price_to'] !== '' && $filter['price_to'] !== null;
+            if ($hasPriceFrom || $hasPriceTo) {
+                $priceFrom = $hasPriceFrom ? (float)$filter['price_from'] : null;
+                $priceTo = $hasPriceTo ? (float)$filter['price_to'] : null;
 
-            $priceJoin = "INNER JOIN b_catalog_price cp
-                ON cp.PRODUCT_ID = e.ID
-               AND cp.CATALOG_GROUP_ID = " . self::PRICE_GROUP_ID;
-            if ($priceFrom !== null) {
-                $priceJoin .= " AND cp.PRICE >= {$priceFrom}";
+                $priceJoin = "INNER JOIN b_catalog_price cp
+                    ON cp.PRODUCT_ID = e.ID
+                   AND cp.CATALOG_GROUP_ID = " . self::filterPriceGroupId();
+                if ($priceFrom !== null) {
+                    $priceJoin .= " AND cp.PRICE >= {$priceFrom}";
+                }
+                if ($priceTo !== null) {
+                    $priceJoin .= " AND cp.PRICE <= {$priceTo}";
+                }
+                $joinParts[] = $priceJoin;
             }
-            if ($priceTo !== null) {
-                $priceJoin .= " AND cp.PRICE <= {$priceTo}";
-            }
-            $joinParts[] = $priceJoin;
         }
 
         $hasExtraFilters = $article !== ''
-            || !empty($manufacturers)
-            || !empty($sizes)
-            || !empty($materials)
+            || !empty($selectedProperties)
             || $hasPriceFrom
             || $hasPriceTo;
 
@@ -539,7 +532,25 @@ class CatalogService
         $perfStartedAt = microtime(true);
         $perf = self::createPerfBag();
 
-        $cacheKey = 'section_' . max(0, $sectionId);
+        if (!Assets::showCatalogFilter()) {
+            $result = [
+                'enabled' => false,
+                'properties' => [],
+                'price' => ['min' => 0.0, 'max' => 0.0],
+            ];
+            if ($measurePerf) {
+                self::finalizePerf($perf, $perfStartedAt);
+                $result['_perf'] = $perf;
+            }
+            return $result;
+        }
+
+        Loader::includeModule('iblock');
+        Loader::includeModule('catalog');
+
+        $cacheKey = 'section_' . max(0, $sectionId)
+            . '_g' . self::filterPriceGroupId()
+            . '_' . md5(implode("\n", Assets::filterPropertyCodes()));
         $cache = \Bitrix\Main\Data\Cache::createInstance();
         if (!$skipCache && $cache->initCache(3600, $cacheKey, '/catalog/filters/')) {
             $result = $cache->getVars();
@@ -553,9 +564,6 @@ class CatalogService
         if (!$skipCache) {
             $cache->startDataCache();
         }
-
-        Loader::includeModule('iblock');
-        Loader::includeModule('catalog');
 
         $db = Application::getConnection();
         $iblockId = self::iblockId();
@@ -573,12 +581,7 @@ class CatalogService
                 self::perfAddQuery($perf, 'section_bounds', (microtime(true) - $t) * 1000);
             }
             if (!$bounds) {
-                $result = [
-                    'manufacturers' => [],
-                    'sizes'         => [],
-                    'materials'     => [],
-                    'price'         => ['min' => 0.0, 'max' => 0.0],
-                ];
+                $result = self::emptyFiltersPayload();
                 if (!$skipCache) {
                     $cache->endDataCache($result);
                 }
@@ -598,12 +601,7 @@ class CatalogService
                 self::perfAddQuery($perf, 'section_ids_by_bounds', (microtime(true) - $t) * 1000, null, count($sectionIds));
             }
             if (empty($sectionIds)) {
-                $result = [
-                    'manufacturers' => [],
-                    'sizes'         => [],
-                    'materials'     => [],
-                    'price'         => ['min' => 0.0, 'max' => 0.0],
-                ];
+                $result = self::emptyFiltersPayload();
                 if (!$skipCache) {
                     $cache->endDataCache($result);
                 }
@@ -626,72 +624,100 @@ class CatalogService
             }
         }
 
-        $materialPropertyId = self::getPropertyIdByCode(self::PROP_MATERIAL_CODE);
-        $propIds = [self::PROP_MANUFACTURER_ID, self::PROP_SIZES_ID];
-        if ($materialPropertyId > 0) {
-            $propIds[] = $materialPropertyId;
-        }
-        $propIdsSql = implode(',', array_map('intval', $propIds));
+        $definitions = self::filterPropertyDefinitions();
+        $properties = [];
+        if (!empty($definitions)) {
+            $defsById = [];
+            foreach ($definitions as $definition) {
+                $defsById[(int)$definition['ID']] = $definition;
+            }
+            $propIdsSql = implode(',', array_map('intval', array_keys($defsById)));
 
-        // Все три свойства одним проходом по товарам секции вместо трёх отдельных JOIN-ов.
-        $propsSql = "
-            SELECT p.IBLOCK_PROPERTY_ID AS PROP_ID, p.VALUE_ENUM, p.VALUE
-            {$scopeFrom}
-            INNER JOIN b_iblock_element_property p
-                ON p.IBLOCK_ELEMENT_ID = e.ID
-               AND p.IBLOCK_PROPERTY_ID IN ({$propIdsSql})
-            WHERE {$scopeWhere}
-            GROUP BY p.IBLOCK_PROPERTY_ID, p.VALUE_ENUM, p.VALUE
-        ";
-        $res = self::queryWithPerf($db, $propsSql, $perfForQueries, 'filters_props');
-        $enumIds = [];
-        $materialValues = [];
-        while ($row = $res->fetch()) {
-            $propId = (int)$row['PROP_ID'];
-            if ($materialPropertyId > 0 && $propId === $materialPropertyId) {
+            $propsSql = "
+                SELECT p.IBLOCK_PROPERTY_ID AS PROP_ID, p.VALUE_ENUM, p.VALUE
+                {$scopeFrom}
+                INNER JOIN b_iblock_element_property p
+                    ON p.IBLOCK_ELEMENT_ID = e.ID
+                   AND p.IBLOCK_PROPERTY_ID IN ({$propIdsSql})
+                WHERE {$scopeWhere}
+                GROUP BY p.IBLOCK_PROPERTY_ID, p.VALUE_ENUM, p.VALUE
+            ";
+            $res = self::queryWithPerf($db, $propsSql, $perfForQueries, 'filters_props');
+            $enumIdsByProp = [];
+            $stringValuesByProp = [];
+            while ($row = $res->fetch()) {
+                $propId = (int)$row['PROP_ID'];
+                $definition = $defsById[$propId] ?? null;
+                if ($definition === null) {
+                    continue;
+                }
+                if ($definition['valueKind'] === 'enum') {
+                    $enumId = (int)$row['VALUE_ENUM'];
+                    if ($enumId > 0) {
+                        $enumIdsByProp[$propId][$enumId] = true;
+                    }
+                    continue;
+                }
                 $value = trim((string)$row['VALUE']);
                 if ($value !== '') {
-                    $materialValues[$value] = true;
-                }
-                continue;
-            }
-            $enumId = (int)$row['VALUE_ENUM'];
-            if ($enumId > 0) {
-                $enumIds[$enumId] = true;
-            }
-        }
-
-        $manufacturers = [];
-        $sizes = [];
-        if (!empty($enumIds)) {
-            $enumSql = "
-                SELECT ID, PROPERTY_ID, VALUE
-                FROM b_iblock_property_enum
-                WHERE ID IN (" . implode(',', array_keys($enumIds)) . ")
-                ORDER BY SORT ASC, VALUE ASC
-            ";
-            $res = self::queryWithPerf($db, $enumSql, $perfForQueries, 'filters_enum_values');
-            while ($row = $res->fetch()) {
-                $item = ['ID' => (int)$row['ID'], 'VALUE' => $row['VALUE']];
-                $propertyId = (int)$row['PROPERTY_ID'];
-                if ($propertyId === self::PROP_MANUFACTURER_ID) {
-                    $manufacturers[] = $item;
-                } elseif ($propertyId === self::PROP_SIZES_ID) {
-                    $sizes[] = $item;
+                    $stringValuesByProp[$propId][$value] = true;
                 }
             }
-        }
 
-        $materialList = array_keys($materialValues);
-        sort($materialList, SORT_STRING);
-        $materials = array_map(static fn(string $value): array => ['VALUE' => $value], $materialList);
+            $enumItemsByProp = [];
+            $enumIds = [];
+            foreach ($enumIdsByProp as $ids) {
+                foreach (array_keys($ids) as $enumId) {
+                    $enumIds[$enumId] = true;
+                }
+            }
+            if (!empty($enumIds)) {
+                $enumSql = "
+                    SELECT ID, PROPERTY_ID, VALUE
+                    FROM b_iblock_property_enum
+                    WHERE ID IN (" . implode(',', array_keys($enumIds)) . ")
+                    ORDER BY SORT ASC, VALUE ASC
+                ";
+                $res = self::queryWithPerf($db, $enumSql, $perfForQueries, 'filters_enum_values');
+                while ($row = $res->fetch()) {
+                    $propertyId = (int)$row['PROPERTY_ID'];
+                    $enumItemsByProp[$propertyId][] = [
+                        'id' => (int)$row['ID'],
+                        'value' => (string)$row['VALUE'],
+                    ];
+                }
+            }
+
+            foreach ($definitions as $definition) {
+                $propertyId = (int)$definition['ID'];
+                if ($definition['valueKind'] === 'enum') {
+                    $values = $enumItemsByProp[$propertyId] ?? [];
+                } else {
+                    $list = array_keys($stringValuesByProp[$propertyId] ?? []);
+                    sort($list, SORT_STRING);
+                    $values = array_map(
+                        static fn(string $value): array => ['value' => $value],
+                        $list
+                    );
+                }
+                if ($values === []) {
+                    continue;
+                }
+                $properties[] = [
+                    'code' => $definition['CODE'],
+                    'name' => $definition['NAME'],
+                    'valueKind' => $definition['valueKind'],
+                    'values' => $values,
+                ];
+            }
+        }
 
         $priceSql = "
             SELECT MIN(cp.PRICE) as MIN_PRICE, MAX(cp.PRICE) as MAX_PRICE
             {$scopeFrom}
             INNER JOIN b_catalog_price cp
                 ON cp.PRODUCT_ID = e.ID
-               AND cp.CATALOG_GROUP_ID = " . self::PRICE_GROUP_ID . "
+               AND cp.CATALOG_GROUP_ID = " . self::filterPriceGroupId() . "
             WHERE {$scopeWhere}
         ";
         $row = self::queryWithPerf($db, $priceSql, $perfForQueries, 'filters_price_minmax')->fetch();
@@ -703,10 +729,9 @@ class CatalogService
         }
 
         $result = [
-            'manufacturers' => $manufacturers,
-            'sizes'         => $sizes,
-            'materials'     => $materials,
-            'price'         => ['min' => $minPrice, 'max' => $maxPrice],
+            'enabled' => true,
+            'properties' => $properties,
+            'price' => ['min' => $minPrice, 'max' => $maxPrice],
         ];
 
         if ($measurePerf) {
@@ -929,6 +954,164 @@ class CatalogService
         }
 
         return array_values(array_unique($result));
+    }
+
+    /**
+     * @return array{enabled: bool, properties: array, price: array{min: float, max: float}}
+     */
+    private static function emptyFiltersPayload(): array
+    {
+        return [
+            'enabled' => true,
+            'properties' => [],
+            'price' => ['min' => 0.0, 'max' => 0.0],
+        ];
+    }
+
+    private static function filterPriceGroupId(): int
+    {
+        static $resolved = null;
+        if ($resolved !== null) {
+            return $resolved;
+        }
+
+        $code = Assets::catalogPriceTypeCode();
+        $db = Application::getConnection();
+        $safeCode = $db->getSqlHelper()->forSql($code);
+        $row = $db->query("
+            SELECT ID
+            FROM b_catalog_group
+            WHERE NAME = '{$safeCode}'
+            LIMIT 1
+        ")->fetch();
+        $id = (int)($row['ID'] ?? 0);
+        $resolved = $id > 0 ? $id : self::PRICE_GROUP_ID;
+
+        return $resolved;
+    }
+
+    /**
+     * @return list<array{ID: int, CODE: string, NAME: string, valueKind: string}>
+     */
+    private static function filterPropertyDefinitions(): array
+    {
+        static $cache = null;
+        if ($cache !== null) {
+            return $cache;
+        }
+
+        $codes = Assets::filterPropertyCodes();
+        if ($codes === []) {
+            return $cache = [];
+        }
+
+        $db = Application::getConnection();
+        $sqlHelper = $db->getSqlHelper();
+        $inSql = implode(',', array_map(
+            static fn(string $code): string => "'" . $sqlHelper->forSql($code) . "'",
+            $codes
+        ));
+        $res = $db->query("
+            SELECT ID, CODE, NAME, PROPERTY_TYPE
+            FROM b_iblock_property
+            WHERE IBLOCK_ID = " . self::iblockId() . "
+              AND CODE IN ({$inSql})
+        ");
+        $byCode = [];
+        while ($row = $res->fetch()) {
+            $code = (string)$row['CODE'];
+            $byCode[strtoupper($code)] = [
+                'ID' => (int)$row['ID'],
+                'CODE' => $code,
+                'NAME' => (string)$row['NAME'],
+                'valueKind' => ((string)$row['PROPERTY_TYPE'] === 'L') ? 'enum' : 'string',
+            ];
+        }
+
+        $ordered = [];
+        foreach ($codes as $code) {
+            $key = strtoupper($code);
+            if (isset($byCode[$key])) {
+                $ordered[] = $byCode[$key];
+            }
+        }
+
+        return $cache = $ordered;
+    }
+
+    /**
+     * @param array<string, mixed> $raw
+     * @return list<array{def: array, values: array}>
+     */
+    private static function normalizeSelectedProperties(array $raw): array
+    {
+        $selected = [];
+        foreach (self::filterPropertyDefinitions() as $definition) {
+            $values = null;
+            foreach ($raw as $code => $list) {
+                if (strcasecmp((string)$code, $definition['CODE']) === 0) {
+                    $values = $list;
+                    break;
+                }
+            }
+            if (!is_array($values) || $values === []) {
+                continue;
+            }
+            if ($definition['valueKind'] === 'enum') {
+                $normalized = self::normalizeIntFilterList($values);
+            } else {
+                $normalized = self::normalizeStringFilterList($values);
+            }
+            if ($normalized === []) {
+                continue;
+            }
+            $selected[] = [
+                'def' => $definition,
+                'values' => $normalized,
+            ];
+        }
+
+        return $selected;
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    public static function parseRequestProperties(mixed $raw): array
+    {
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($raw as $code => $values) {
+            $code = trim((string)$code);
+            if ($code === '' || !preg_match('/^[A-Za-z0-9_]+$/', $code)) {
+                continue;
+            }
+            $items = is_array($values) ? $values : [$values];
+            $clean = [];
+            foreach ($items as $item) {
+                if (is_array($item)) {
+                    foreach ($item as $nested) {
+                        $str = trim((string)$nested);
+                        if ($str !== '') {
+                            $clean[] = $str;
+                        }
+                    }
+                    continue;
+                }
+                $str = trim((string)$item);
+                if ($str !== '') {
+                    $clean[] = $str;
+                }
+            }
+            if ($clean !== []) {
+                $result[$code] = array_values(array_unique($clean));
+            }
+        }
+
+        return $result;
     }
 
     private static function getPropertyIdByCode(string $code): int
