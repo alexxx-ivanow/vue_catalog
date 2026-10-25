@@ -1,4 +1,4 @@
-import { apiGet, catalogApiUrl } from '../apiClient.js';
+import { apiGet, catalogApiUrl } from '../../api-client.js';
 
 export default {
     name: 'CheckoutLocationAutocomplete',

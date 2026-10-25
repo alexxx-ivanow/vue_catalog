@@ -1,10 +1,10 @@
 import ProductCard from './ProductCard.js';
 import CatalogPagination from './CatalogPagination.js';
-import CatalogFilter from './CatalogFilter.js';
-import { catalogApiUrl, getReadHeaders } from '../apiClient.js';
-import { clampFilterPrices, normalizePriceBounds } from '../filterPriceBounds.js';
-import { appendCatalogQuery, readPropertiesFromSearch } from '../filterQuery.js';
-import { smoothScrollToElement } from '../scrollWithStickyHeader.js';
+import CatalogFilter from '../filter/CatalogFilter.js';
+import { catalogApiUrl, getReadHeaders } from '../../api-client.js';
+import { clampFilterPrices, normalizePriceBounds } from '../../filter-price-bounds.js';
+import { appendCatalogQuery, readPropertiesFromSearch } from '../../filter-query.js';
+import { smoothScrollToElement } from '../../scroll-with-sticky-header.js';
 
 const SKELETON_PRODUCT_COUNT = 8;
 const DEFAULT_LIMIT = 12;

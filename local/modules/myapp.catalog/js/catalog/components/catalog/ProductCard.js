@@ -1,6 +1,6 @@
 import { ref } from 'vue';
-import { catalogApiUrl, getJsonHeaders } from '../apiClient.js';
-import { syncCartCountFromResponse } from '../cartCounter.js';
+import { catalogApiUrl, getJsonHeaders } from '../../api-client.js';
+import { syncCartCountFromResponse } from '../../cart-counter.js';
 
 export default {
     name: 'ProductCard',

@@ -1,4 +1,4 @@
-import { CART_COUNT_EVENT, fetchCartCount } from '../cartCounter.js';
+import { CART_COUNT_EVENT, fetchCartCount } from '../../cart-counter.js';
 
 export default {
     name: 'SiteCartNav',

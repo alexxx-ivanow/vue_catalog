@@ -1,4 +1,4 @@
-import { isFullPriceRange, normalizePriceBounds } from '../filterPriceBounds.js';
+import { isFullPriceRange, normalizePriceBounds } from '../../filter-price-bounds.js';
 
 export default {
     name: 'CatalogFilter',

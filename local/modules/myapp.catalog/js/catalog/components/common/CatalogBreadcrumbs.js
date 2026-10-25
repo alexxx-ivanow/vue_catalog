@@ -1,4 +1,4 @@
-import { catalogApiUrl, getReadHeaders } from '../apiClient.js';
+import { catalogApiUrl, getReadHeaders } from '../../api-client.js';
 
 export default {
     name: 'CatalogBreadcrumbs',

@@ -1,6 +1,6 @@
-import AppPreloader from './AppPreloader.js';
-import { catalogApiUrl, getJsonHeaders, getReadHeaders } from '../apiClient.js';
-import { syncCartCountFromResponse } from '../cartCounter.js';
+import AppPreloader from '../common/AppPreloader.js';
+import { catalogApiUrl, getJsonHeaders, getReadHeaders } from '../../api-client.js';
+import { syncCartCountFromResponse } from '../../cart-counter.js';
 
 export default {
     name: 'ProductDetail',

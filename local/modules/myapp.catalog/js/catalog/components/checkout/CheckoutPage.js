@@ -1,4 +1,4 @@
-import AppPreloader from './AppPreloader.js';
+import AppPreloader from '../common/AppPreloader.js';
 import CheckoutPersonType from './CheckoutPersonType.js';
 import CheckoutLocationAutocomplete from './CheckoutLocationAutocomplete.js';
 import CheckoutDeliveryList from './CheckoutDeliveryList.js';
@@ -6,8 +6,8 @@ import CheckoutPaymentList from './CheckoutPaymentList.js';
 import CheckoutPropertiesForm from './CheckoutPropertiesForm.js';
 import CheckoutBasketList from './CheckoutBasketList.js';
 import CheckoutTotalsSidebar from './CheckoutTotalsSidebar.js';
-import { apiGet, apiPost, catalogApiUrl } from '../apiClient.js';
-import { smoothScrollToElement } from '../scrollWithStickyHeader.js';
+import { apiGet, apiPost, catalogApiUrl } from '../../api-client.js';
+import { smoothScrollToElement } from '../../scroll-with-sticky-header.js';
 
 function isCheckoutNavigationLocked() {
     return window.__MYAPP_CHECKOUT_NAV_LOCK__ === true;

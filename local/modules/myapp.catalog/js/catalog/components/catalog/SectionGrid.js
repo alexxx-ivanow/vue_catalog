@@ -1,5 +1,5 @@
 import SectionCard from './SectionCard.js';
-import { catalogApiUrl, getReadHeaders } from '../apiClient.js';
+import { catalogApiUrl, getReadHeaders } from '../../api-client.js';
 
 const SKELETON_COUNT = 8;
 const HYDRATE_PAGE_TYPES = new Set(['catalog', 'home']);

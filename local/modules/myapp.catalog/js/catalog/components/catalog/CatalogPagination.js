@@ -1,5 +1,5 @@
-import { catalogApiUrl, getReadHeaders } from '../apiClient.js';
-import { appendCatalogQuery } from '../filterQuery.js';
+import { catalogApiUrl, getReadHeaders } from '../../api-client.js';
+import { appendCatalogQuery } from '../../filter-query.js';
 
 export default {
     name: 'CatalogPagination',

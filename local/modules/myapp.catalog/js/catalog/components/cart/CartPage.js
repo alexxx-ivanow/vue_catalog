@@ -1,6 +1,6 @@
-import AppPreloader from './AppPreloader.js';
-import { catalogApiUrl, getReadHeaders } from '../apiClient.js';
-import { setCartCount } from '../cartCounter.js';
+import AppPreloader from '../common/AppPreloader.js';
+import { catalogApiUrl, getReadHeaders } from '../../api-client.js';
+import { setCartCount } from '../../cart-counter.js';
 
 export default {
     name: 'CartPage',

@@ -1,5 +1,5 @@
 import { createApp } from 'vue';
-import OrderSuccessPage from './components/OrderSuccessPage.js';
+import OrderSuccessPage from './components/checkout/OrderSuccessPage.js';
 
 const mountEl = document.getElementById('app-catalog');
 if (mountEl) {
