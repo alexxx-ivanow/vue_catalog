@@ -37,13 +37,38 @@ class myapp_catalog extends CModule
         ModuleManager::registerModule($this->MODULE_ID);
         $this->installTemplates();
         $this->installRoutes();
+        $this->installEvents();
     }
 
     public function DoUninstall()
     {
+        $this->uninstallEvents();
         $this->uninstallRoutes();
         Option::delete($this->MODULE_ID);
         ModuleManager::unRegisterModule($this->MODULE_ID);
+    }
+
+    public function installEvents(): void
+    {
+        if (!\Bitrix\Main\Loader::includeModule($this->MODULE_ID)) {
+            return;
+        }
+
+        \MyApp\Catalog\Event\CatalogCacheHandler::installPersistentHandlers();
+        Option::set($this->MODULE_ID, 'catalog_cache_handlers_installed', 'Y');
+    }
+
+    public function uninstallEvents(): void
+    {
+        if (!\Bitrix\Main\Loader::includeModule($this->MODULE_ID)) {
+            \Bitrix\Main\Loader::registerAutoLoadClasses($this->MODULE_ID, [
+                'MyApp\\Catalog\\Event\\CatalogCacheHandler' => 'lib/Event/CatalogCacheHandler.php',
+            ]);
+        }
+
+        if (class_exists(\MyApp\Catalog\Event\CatalogCacheHandler::class)) {
+            \MyApp\Catalog\Event\CatalogCacheHandler::uninstallPersistentHandlers();
+        }
     }
 
     public function installTemplates(): void

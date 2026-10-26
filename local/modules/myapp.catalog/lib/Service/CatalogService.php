@@ -95,10 +95,7 @@ class CatalogService
                 ? $cached['product']
                 : null;
         }
-        $productCacheStarted = false;
-        if (!$skipCache) {
-            $productCacheStarted = self::startTaggedDataCache($cache, self::CACHE_DIR_PRODUCT);
-        }
+        $productCacheStarted = !$skipCache && $cache->startDataCache();
 
         Loader::includeModule('iblock');
         Loader::includeModule('catalog');
@@ -110,7 +107,13 @@ class CatalogService
 
         if (!$result) {
             if (!$skipCache) {
-                self::endTaggedDataCache($cache, ['product' => null], $productCacheStarted);
+                self::commitTaggedDataCache(
+                    $cache,
+                    self::CACHE_DIR_PRODUCT,
+                    self::cacheTagsForProduct($id),
+                    ['product' => null],
+                    $productCacheStarted
+                );
             }
             return null;
         }
@@ -133,7 +136,13 @@ class CatalogService
         $result['SECTION_NAME'] = (string)($section['NAME'] ?? '');
 
         if (!$skipCache) {
-            self::endTaggedDataCache($cache, ['product' => $result], $productCacheStarted);
+            self::commitTaggedDataCache(
+                $cache,
+                self::CACHE_DIR_PRODUCT,
+                self::cacheTagsForProduct($id),
+                ['product' => $result],
+                $productCacheStarted
+            );
         }
 
         return $result;
@@ -173,10 +182,7 @@ class CatalogService
             }
             return $result;
         }
-        $goodsCacheStarted = false;
-        if (!$skipCache) {
-            $goodsCacheStarted = self::startTaggedDataCache($cache, self::CACHE_DIR_GOODS);
-        }
+        $goodsCacheStarted = !$skipCache && $cache->startDataCache();
 
         Loader::includeModule('iblock');
         Loader::includeModule('catalog');
@@ -207,7 +213,13 @@ class CatalogService
             if (!$bounds) {
                 $result = self::emptyResult($page, $limit, '');
                 if (!$skipCache) {
-                    self::endTaggedDataCache($cache, $result, $goodsCacheStarted);
+                    self::commitTaggedDataCache(
+                        $cache,
+                        self::CACHE_DIR_GOODS,
+                        self::cacheTagsForGoodsListing($sectionId, []),
+                        $result,
+                        $goodsCacheStarted
+                    );
                 }
                 if ($measurePerf) {
                     self::finalizePerf($perf, $perfStartedAt);
@@ -235,7 +247,13 @@ class CatalogService
             if (empty($sectionIds)) {
                 $result = self::emptyResult($page, $limit, $sectionName, $subsections);
                 if (!$skipCache) {
-                    self::endTaggedDataCache($cache, $result, $goodsCacheStarted);
+                    self::commitTaggedDataCache(
+                        $cache,
+                        self::CACHE_DIR_GOODS,
+                        self::cacheTagsForGoodsListing($sectionId, []),
+                        $result,
+                        $goodsCacheStarted
+                    );
                 }
                 if ($measurePerf) {
                     self::finalizePerf($perf, $perfStartedAt);
@@ -363,6 +381,7 @@ class CatalogService
                 $needsDistinct,
                 $countCacheKey,
                 $skipCache,
+                $sectionId,
                 $perfForQueries
             );
             $total = (int)$totalInfo['total'];
@@ -488,7 +507,13 @@ class CatalogService
         if (!$skipCache) {
             $cachePayload = $result;
             unset($cachePayload['_perf'], $cachePayload['perf']);
-            self::endTaggedDataCache($cache, $cachePayload, $goodsCacheStarted);
+            self::commitTaggedDataCache(
+                $cache,
+                self::CACHE_DIR_GOODS,
+                self::cacheTagsForGoodsListing($sectionId, $items),
+                $cachePayload,
+                $goodsCacheStarted
+            );
         }
 
         return $result;
@@ -513,26 +538,205 @@ class CatalogService
         \Bitrix\Main\Data\Cache::clearCache(false, self::CACHE_DIR_PRODUCT);
     }
 
-    private static function startTaggedDataCache(\Bitrix\Main\Data\Cache $cache, string $dir): bool
-    {
-        if (!$cache->startDataCache()) {
-            return false;
+    /**
+     * @param list<int> $extraSectionIds разделы до сохранения (перенос товара)
+     * @param bool $invalidateSectionScopes сброс кеша фильтра/счётчика по цепочке разделов
+     */
+    public static function invalidateByElement(
+        int $elementId,
+        array $extraSectionIds = [],
+        bool $invalidateSectionScopes = false
+    ): void {
+        $elementId = (int)$elementId;
+        if ($elementId <= 0) {
+            return;
         }
 
         $taggedCache = Application::getInstance()->getTaggedCache();
-        $taggedCache->startTagCache($dir);
-        $taggedCache->registerTag('iblock_id_' . self::iblockId());
+        $taggedCache->clearByTag(self::tagForElement($elementId));
 
-        return true;
+        if (!$invalidateSectionScopes) {
+            return;
+        }
+
+        $sectionIds = array_unique(array_merge(
+            self::getElementSectionIds($elementId),
+            array_map('intval', $extraSectionIds)
+        ));
+
+        foreach ($sectionIds as $sectionId) {
+            if ($sectionId > 0) {
+                self::clearSectionPathTags($sectionId);
+            }
+        }
     }
 
-    private static function endTaggedDataCache(\Bitrix\Main\Data\Cache $cache, mixed $data, bool $started): void
+    public static function invalidateBySection(int $sectionId, bool $includeDescendants = false): void
     {
+        $sectionId = (int)$sectionId;
+        if ($sectionId <= 0) {
+            return;
+        }
+
+        self::clearSectionPathTags($sectionId);
+
+        if (!$includeDescendants) {
+            return;
+        }
+
+        $taggedCache = Application::getInstance()->getTaggedCache();
+        foreach (self::getSectionDescendantIds($sectionId) as $childId) {
+            $taggedCache->clearByTag(self::tagForSection($childId));
+        }
+    }
+
+    /**
+     * @return list<int>
+     */
+    public static function getElementSectionIds(int $elementId): array
+    {
+        $elementId = (int)$elementId;
+        if ($elementId <= 0) {
+            return [];
+        }
+
+        Loader::includeModule('iblock');
+
+        $db = Application::getConnection();
+        $sql = "
+            SELECT se.IBLOCK_SECTION_ID
+            FROM b_iblock_section_element se
+            INNER JOIN b_iblock_section s ON s.ID = se.IBLOCK_SECTION_ID
+            WHERE se.IBLOCK_ELEMENT_ID = {$elementId}
+              AND s.IBLOCK_ID = " . self::iblockId() . "
+        ";
+        $res = $db->query($sql);
+        $ids = [];
+        while ($row = $res->fetch()) {
+            $ids[] = (int)$row['IBLOCK_SECTION_ID'];
+        }
+
+        return array_values(array_unique(array_filter($ids)));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function cacheTagsForProduct(int $elementId): array
+    {
+        return [self::tagForElement($elementId)];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $items
+     * @return list<string>
+     */
+    private static function cacheTagsForGoodsListing(int $sectionId, array $items): array
+    {
+        $tags = self::cacheTagsForSectionScope($sectionId);
+        foreach ($items as $item) {
+            $id = (int)($item['ID'] ?? 0);
+            if ($id > 0) {
+                $tags[] = self::tagForElement($id);
+            }
+        }
+
+        return array_values(array_unique($tags));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function cacheTagsForSectionScope(int $sectionId): array
+    {
+        $sectionId = (int)$sectionId;
+        if ($sectionId > 0) {
+            return [self::tagForSection($sectionId)];
+        }
+
+        return [self::tagForIblock()];
+    }
+
+    private static function tagForElement(int $elementId): string
+    {
+        return 'iblock_element_' . (int)$elementId;
+    }
+
+    private static function tagForSection(int $sectionId): string
+    {
+        return 'iblock_section_' . (int)$sectionId;
+    }
+
+    private static function tagForIblock(): string
+    {
+        return 'iblock_id_' . self::iblockId();
+    }
+
+    private static function clearSectionPathTags(int $sectionId): void
+    {
+        $taggedCache = Application::getInstance()->getTaggedCache();
+        foreach (self::getSectionPath($sectionId) as $item) {
+            $taggedCache->clearByTag(self::tagForSection((int)$item['ID']));
+        }
+    }
+
+    /**
+     * @return list<int>
+     */
+    private static function getSectionDescendantIds(int $sectionId): array
+    {
+        $sectionId = (int)$sectionId;
+        if ($sectionId <= 0) {
+            return [];
+        }
+
+        $bounds = self::getSectionBounds($sectionId);
+        if (!$bounds) {
+            return [];
+        }
+
+        $db = Application::getConnection();
+        $left = (int)$bounds['LEFT_MARGIN'];
+        $right = (int)$bounds['RIGHT_MARGIN'];
+        $sql = "
+            SELECT ID
+            FROM b_iblock_section
+            WHERE IBLOCK_ID = " . self::iblockId() . "
+              AND LEFT_MARGIN > {$left}
+              AND RIGHT_MARGIN < {$right}
+        ";
+        $res = $db->query($sql);
+        $ids = [];
+        while ($row = $res->fetch()) {
+            $ids[] = (int)$row['ID'];
+        }
+
+        return $ids;
+    }
+
+    /**
+     * @param list<string> $tags
+     */
+    private static function commitTaggedDataCache(
+        \Bitrix\Main\Data\Cache $cache,
+        string $dir,
+        array $tags,
+        mixed $data,
+        bool $started
+    ): void {
         if (!$started) {
             return;
         }
 
-        Application::getInstance()->getTaggedCache()->endTagCache();
+        $taggedCache = Application::getInstance()->getTaggedCache();
+        $taggedCache->startTagCache($dir);
+        foreach (array_unique($tags) as $tag) {
+            $tag = trim((string)$tag);
+            if ($tag !== '') {
+                $taggedCache->registerTag($tag);
+            }
+        }
+        $taggedCache->endTagCache();
         $cache->endDataCache($data);
     }
 
@@ -594,10 +798,8 @@ class CatalogService
             }
             return $result;
         }
-        $filtersCacheStarted = false;
-        if (!$skipCache) {
-            $filtersCacheStarted = self::startTaggedDataCache($cache, self::CACHE_DIR_FILTERS);
-        }
+        $filtersCacheStarted = !$skipCache && $cache->startDataCache();
+        $filtersCacheTags = self::cacheTagsForSectionScope($sectionId);
 
         $db = Application::getConnection();
         $iblockId = self::iblockId();
@@ -617,7 +819,7 @@ class CatalogService
             if (!$bounds) {
                 $result = self::emptyFiltersPayload();
                 if (!$skipCache) {
-                    self::endTaggedDataCache($cache, $result, $filtersCacheStarted);
+                    self::commitTaggedDataCache($cache, self::CACHE_DIR_FILTERS, $filtersCacheTags, $result, $filtersCacheStarted);
                 }
                 if ($measurePerf) {
                     self::finalizePerf($perf, $perfStartedAt);
@@ -637,7 +839,7 @@ class CatalogService
             if (empty($sectionIds)) {
                 $result = self::emptyFiltersPayload();
                 if (!$skipCache) {
-                    self::endTaggedDataCache($cache, $result, $filtersCacheStarted);
+                    self::commitTaggedDataCache($cache, self::CACHE_DIR_FILTERS, $filtersCacheTags, $result, $filtersCacheStarted);
                 }
                 if ($measurePerf) {
                     self::finalizePerf($perf, $perfStartedAt);
@@ -777,7 +979,7 @@ class CatalogService
         if (!$skipCache) {
             $cachePayload = $result;
             unset($cachePayload['_perf'], $cachePayload['perf']);
-            self::endTaggedDataCache($cache, $cachePayload, $filtersCacheStarted);
+            self::commitTaggedDataCache($cache, self::CACHE_DIR_FILTERS, $filtersCacheTags, $cachePayload, $filtersCacheStarted);
         }
 
         return $result;
@@ -1177,6 +1379,7 @@ class CatalogService
         bool $needsDistinct,
         string $countCacheKey,
         bool $skipCache,
+        int $sectionId,
         ?array &$perf = null
     ): array {
         $countCache = \Bitrix\Main\Data\Cache::createInstance();
@@ -1213,8 +1416,14 @@ class CatalogService
         $total = (int)($row['CNT'] ?? 0);
 
         if (!$skipCache) {
-            $countCacheStarted = self::startTaggedDataCache($countCache, self::CACHE_DIR_GOODS_COUNT);
-            self::endTaggedDataCache($countCache, ['total' => $total], $countCacheStarted);
+            $countCacheStarted = $countCache->startDataCache();
+            self::commitTaggedDataCache(
+                $countCache,
+                self::CACHE_DIR_GOODS_COUNT,
+                self::cacheTagsForSectionScope($sectionId),
+                ['total' => $total],
+                $countCacheStarted
+            );
         }
 
         return [

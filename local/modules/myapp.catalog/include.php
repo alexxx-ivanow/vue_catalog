@@ -21,4 +21,7 @@ Loader::registerAutoLoadClasses('myapp.catalog', [
     'MyApp\\Catalog\\Routing\\WebRoutes' => 'lib/Routing/WebRoutes.php',
     'MyApp\\Catalog\\Config\\Assets' => 'lib/Config/Assets.php',
     'MyApp\\Catalog\\Config\\Templates' => 'lib/Config/Templates.php',
+    'MyApp\\Catalog\\Event\\CatalogCacheHandler' => 'lib/Event/CatalogCacheHandler.php',
 ]);
+
+\MyApp\Catalog\Event\CatalogCacheHandler::ensurePersistentHandlers();
