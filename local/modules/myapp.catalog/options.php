@@ -24,6 +24,7 @@ Loc::loadMessages(__FILE__);
 $moduleId = 'myapp.catalog';
 $optUseBitrixVue = 'use_bitrix_vue';
 $optCatalogIblockId = 'catalog_iblock_id';
+$optCatalogCacheTtl = Assets::OPT_CATALOG_CACHE_TTL;
 $optAutoLoginAfterGuestOrder = 'auto_login_after_guest_order';
 $optShowCatalogFilter = Assets::OPT_SHOW_CATALOG_FILTER;
 $optCatalogPriceTypeCode = Assets::OPT_CATALOG_PRICE_TYPE_CODE;
@@ -57,6 +58,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
     if ($postedIblockId > 0) {
         Option::set($moduleId, $optCatalogIblockId, (string)$postedIblockId);
     }
+
+    $postedCacheTtl = (int)($_POST[$optCatalogCacheTtl] ?? 0);
+    if ($postedCacheTtl <= 0) {
+        $postedCacheTtl = Assets::DEFAULT_CATALOG_CACHE_TTL;
+    }
+    Option::set($moduleId, $optCatalogCacheTtl, (string)$postedCacheTtl);
 }
 
 $useBitrixVue = Option::get($moduleId, $optUseBitrixVue, 'N') === 'Y';
@@ -64,6 +71,7 @@ $autoLoginAfterGuestOrder = Option::get($moduleId, $optAutoLoginAfterGuestOrder,
 $showCatalogFilter = Assets::showCatalogFilter();
 $catalogPriceTypeCode = Assets::catalogPriceTypeCode();
 $filterPropertyCodes = Assets::filterPropertyCodes();
+$catalogCacheTtl = Assets::catalogCacheTtl();
 $catalogIblockId = (int)Option::get($moduleId, $optCatalogIblockId, (string)$defaultCatalogIblockId);
 if ($catalogIblockId <= 0) {
     $catalogIblockId = $defaultCatalogIblockId;
@@ -207,6 +215,26 @@ $tabControl->Begin();
                 id="MYAPP_CATALOG_IBLOCK_ID"
                 name="<?= htmlspecialcharsbx($optCatalogIblockId) ?>"
                 value="<?= (int)$catalogIblockId ?>"
+                maxlength="10"
+            >
+        </td>
+    </tr>
+    <tr>
+        <td width="50%" class="adm-detail-content-cell-l">
+            <label for="MYAPP_CATALOG_CACHE_TTL">
+                <?= Loc::getMessage('MYAPP_CATALOG_OPT_CACHE_TTL') ?>
+            </label>
+            <br>
+            <small><?= Loc::getMessage('MYAPP_CATALOG_OPT_CACHE_TTL_HINT') ?></small>
+        </td>
+        <td width="50%" class="adm-detail-content-cell-r">
+            <input
+                type="text"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                id="MYAPP_CATALOG_CACHE_TTL"
+                name="<?= htmlspecialcharsbx($optCatalogCacheTtl) ?>"
+                value="<?= (int)$catalogCacheTtl ?>"
                 maxlength="10"
             >
         </td>

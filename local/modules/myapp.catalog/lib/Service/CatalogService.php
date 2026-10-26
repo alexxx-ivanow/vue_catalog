@@ -15,6 +15,14 @@ class CatalogService
     public const MAX_GOODS_PER_PAGE = 48;
     private const PRICE_GROUP_ID = 1;
 
+    private const CACHE_DIR_PRODUCT = '/catalog/product/';
+
+    private const CACHE_DIR_GOODS = '/catalog/goods/';
+
+    private const CACHE_DIR_GOODS_COUNT = '/catalog/goods_count/';
+
+    private const CACHE_DIR_FILTERS = '/catalog/filters/';
+
     // ID свойств из таблицы b_iblock_property
     public const PROP_MANUFACTURER_ID  = 25;
     private const PROP_ARTICLE_ID      = 27;
@@ -81,14 +89,15 @@ class CatalogService
         $skipCache = self::shouldSkipCache();
         $cacheKey = 'product_' . $id;
         $cache = \Bitrix\Main\Data\Cache::createInstance();
-        if (!$skipCache && $cache->initCache(3600, $cacheKey, '/catalog/product/')) {
+        if (!$skipCache && $cache->initCache(Assets::catalogCacheTtl(), $cacheKey, self::CACHE_DIR_PRODUCT)) {
             $cached = $cache->getVars();
             return is_array($cached) && array_key_exists('product', $cached)
                 ? $cached['product']
                 : null;
         }
+        $productCacheStarted = false;
         if (!$skipCache) {
-            $cache->startDataCache();
+            $productCacheStarted = self::startTaggedDataCache($cache, self::CACHE_DIR_PRODUCT);
         }
 
         Loader::includeModule('iblock');
@@ -101,7 +110,7 @@ class CatalogService
 
         if (!$result) {
             if (!$skipCache) {
-                $cache->endDataCache(['product' => null]);
+                self::endTaggedDataCache($cache, ['product' => null], $productCacheStarted);
             }
             return null;
         }
@@ -124,7 +133,7 @@ class CatalogService
         $result['SECTION_NAME'] = (string)($section['NAME'] ?? '');
 
         if (!$skipCache) {
-            $cache->endDataCache(['product' => $result]);
+            self::endTaggedDataCache($cache, ['product' => $result], $productCacheStarted);
         }
 
         return $result;
@@ -155,7 +164,7 @@ class CatalogService
             . '|' . implode(',', Assets::filterPropertyCodes())
         );
         $cache = \Bitrix\Main\Data\Cache::createInstance();
-        if (!$skipCache && $cache->initCache(3600, $cacheKey, '/catalog/goods/')) {
+        if (!$skipCache && $cache->initCache(Assets::catalogCacheTtl(), $cacheKey, self::CACHE_DIR_GOODS)) {
             $result = $cache->getVars();
             if ($measurePerf) {
                 $perf['cache_hit'] = true;
@@ -164,8 +173,9 @@ class CatalogService
             }
             return $result;
         }
+        $goodsCacheStarted = false;
         if (!$skipCache) {
-            $cache->startDataCache();
+            $goodsCacheStarted = self::startTaggedDataCache($cache, self::CACHE_DIR_GOODS);
         }
 
         Loader::includeModule('iblock');
@@ -197,7 +207,7 @@ class CatalogService
             if (!$bounds) {
                 $result = self::emptyResult($page, $limit, '');
                 if (!$skipCache) {
-                    $cache->endDataCache($result);
+                    self::endTaggedDataCache($cache, $result, $goodsCacheStarted);
                 }
                 if ($measurePerf) {
                     self::finalizePerf($perf, $perfStartedAt);
@@ -225,7 +235,7 @@ class CatalogService
             if (empty($sectionIds)) {
                 $result = self::emptyResult($page, $limit, $sectionName, $subsections);
                 if (!$skipCache) {
-                    $cache->endDataCache($result);
+                    self::endTaggedDataCache($cache, $result, $goodsCacheStarted);
                 }
                 if ($measurePerf) {
                     self::finalizePerf($perf, $perfStartedAt);
@@ -478,7 +488,7 @@ class CatalogService
         if (!$skipCache) {
             $cachePayload = $result;
             unset($cachePayload['_perf'], $cachePayload['perf']);
-            $cache->endDataCache($cachePayload);
+            self::endTaggedDataCache($cache, $cachePayload, $goodsCacheStarted);
         }
 
         return $result;
@@ -497,10 +507,33 @@ class CatalogService
     // резервный метод, пригодится при импорте товаров
     public static function clearCache(): void
     {
-        \Bitrix\Main\Data\Cache::clearCache(false, '/catalog/goods/');
-        \Bitrix\Main\Data\Cache::clearCache(false, '/catalog/goods_count/');
-        \Bitrix\Main\Data\Cache::clearCache(false, '/catalog/filters/');
-        \Bitrix\Main\Data\Cache::clearCache(false, '/catalog/product/');
+        \Bitrix\Main\Data\Cache::clearCache(false, self::CACHE_DIR_GOODS);
+        \Bitrix\Main\Data\Cache::clearCache(false, self::CACHE_DIR_GOODS_COUNT);
+        \Bitrix\Main\Data\Cache::clearCache(false, self::CACHE_DIR_FILTERS);
+        \Bitrix\Main\Data\Cache::clearCache(false, self::CACHE_DIR_PRODUCT);
+    }
+
+    private static function startTaggedDataCache(\Bitrix\Main\Data\Cache $cache, string $dir): bool
+    {
+        if (!$cache->startDataCache()) {
+            return false;
+        }
+
+        $taggedCache = Application::getInstance()->getTaggedCache();
+        $taggedCache->startTagCache($dir);
+        $taggedCache->registerTag('iblock_id_' . self::iblockId());
+
+        return true;
+    }
+
+    private static function endTaggedDataCache(\Bitrix\Main\Data\Cache $cache, mixed $data, bool $started): void
+    {
+        if (!$started) {
+            return;
+        }
+
+        Application::getInstance()->getTaggedCache()->endTagCache();
+        $cache->endDataCache($data);
     }
 
     // получаем цены набора товаров одним запросом
@@ -552,7 +585,7 @@ class CatalogService
             . '_g' . self::filterPriceGroupId()
             . '_' . md5(implode("\n", Assets::filterPropertyCodes()));
         $cache = \Bitrix\Main\Data\Cache::createInstance();
-        if (!$skipCache && $cache->initCache(3600, $cacheKey, '/catalog/filters/')) {
+        if (!$skipCache && $cache->initCache(Assets::catalogCacheTtl(), $cacheKey, self::CACHE_DIR_FILTERS)) {
             $result = $cache->getVars();
             if ($measurePerf) {
                 $perf['cache_hit'] = true;
@@ -561,8 +594,9 @@ class CatalogService
             }
             return $result;
         }
+        $filtersCacheStarted = false;
         if (!$skipCache) {
-            $cache->startDataCache();
+            $filtersCacheStarted = self::startTaggedDataCache($cache, self::CACHE_DIR_FILTERS);
         }
 
         $db = Application::getConnection();
@@ -583,7 +617,7 @@ class CatalogService
             if (!$bounds) {
                 $result = self::emptyFiltersPayload();
                 if (!$skipCache) {
-                    $cache->endDataCache($result);
+                    self::endTaggedDataCache($cache, $result, $filtersCacheStarted);
                 }
                 if ($measurePerf) {
                     self::finalizePerf($perf, $perfStartedAt);
@@ -603,7 +637,7 @@ class CatalogService
             if (empty($sectionIds)) {
                 $result = self::emptyFiltersPayload();
                 if (!$skipCache) {
-                    $cache->endDataCache($result);
+                    self::endTaggedDataCache($cache, $result, $filtersCacheStarted);
                 }
                 if ($measurePerf) {
                     self::finalizePerf($perf, $perfStartedAt);
@@ -743,7 +777,7 @@ class CatalogService
         if (!$skipCache) {
             $cachePayload = $result;
             unset($cachePayload['_perf'], $cachePayload['perf']);
-            $cache->endDataCache($cachePayload);
+            self::endTaggedDataCache($cache, $cachePayload, $filtersCacheStarted);
         }
 
         return $result;
@@ -1146,7 +1180,7 @@ class CatalogService
         ?array &$perf = null
     ): array {
         $countCache = \Bitrix\Main\Data\Cache::createInstance();
-        if (!$skipCache && $countCache->initCache(3600, $countCacheKey, '/catalog/goods_count/')) {
+        if (!$skipCache && $countCache->initCache(Assets::catalogCacheTtl(), $countCacheKey, self::CACHE_DIR_GOODS_COUNT)) {
             $cached = $countCache->getVars();
             if ($perf !== null) {
                 self::perfAddQuery($perf, 'goods_count_cache_hit', 0.0);
@@ -1179,8 +1213,8 @@ class CatalogService
         $total = (int)($row['CNT'] ?? 0);
 
         if (!$skipCache) {
-            $countCache->startDataCache();
-            $countCache->endDataCache(['total' => $total]);
+            $countCacheStarted = self::startTaggedDataCache($countCache, self::CACHE_DIR_GOODS_COUNT);
+            self::endTaggedDataCache($countCache, ['total' => $total], $countCacheStarted);
         }
 
         return [

@@ -22,7 +22,11 @@ final class Assets
 
     public const OPT_FILTER_PROPERTY_CODES = 'catalog_filter_property_codes';
 
+    public const OPT_CATALOG_CACHE_TTL = 'catalog_cache_ttl';
+
     public const DEFAULT_CATALOG_IBLOCK_ID = 2;
+
+    public const DEFAULT_CATALOG_CACHE_TTL = 3600;
 
     public const DEFAULT_CATALOG_PRICE_TYPE_CODE = 'BASE';
 
@@ -53,6 +57,17 @@ final class Assets
     public static function useBitrixVueOption(): bool
     {
         return Option::get(self::MODULE_ID, self::OPT_USE_BITRIX_VUE, 'N') === 'Y';
+    }
+
+    public static function catalogCacheTtl(): int
+    {
+        $ttl = (int)Option::get(
+            self::MODULE_ID,
+            self::OPT_CATALOG_CACHE_TTL,
+            (string)self::DEFAULT_CATALOG_CACHE_TTL
+        );
+
+        return $ttl > 0 ? $ttl : self::DEFAULT_CATALOG_CACHE_TTL;
     }
 
     public static function catalogIblockId(): int
