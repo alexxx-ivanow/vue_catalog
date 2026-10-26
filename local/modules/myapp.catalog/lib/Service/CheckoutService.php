@@ -165,6 +165,7 @@ class CheckoutService
         global $USER;
         $wasGuest = !is_object($USER) || !$USER->IsAuthorized();
         $orderUserId = null;
+        $guestUserIsNew = false;
 
         if ($wasGuest) {
             $userResolved = CheckoutUserService::resolveUserIdForOrder($selection, true);
@@ -182,6 +183,7 @@ class CheckoutService
                 ];
             }
             $orderUserId = $userResolved['userId'];
+            $guestUserIsNew = (bool)$userResolved['isNew'];
             self::bindFuserToUser($orderUserId);
         }
 
@@ -227,7 +229,7 @@ class CheckoutService
 
         CheckoutUserService::grantOrderViewAccess($orderId);
 
-        if ($wasGuest && Assets::autoLoginAfterGuestOrder()) {
+        if ($wasGuest && $guestUserIsNew && Assets::autoLoginAfterGuestOrder()) {
             $orderUserId = (int)$order->getUserId();
             if ($orderUserId > 0 && is_object($USER)) {
                 $USER->Authorize($orderUserId);
