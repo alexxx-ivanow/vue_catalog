@@ -8,6 +8,8 @@ $data_sections = is_array($data_sections ?? null) ? $data_sections : [];
 $data_section = is_array($data_section ?? null) ? $data_section : [];
 $data_product = is_array($data_product ?? null) ? $data_product : [];
 $data_order = is_array($data_order ?? null) ? $data_order : [];
+$data_auth_confirm = is_array($data_auth_confirm ?? null) ? $data_auth_confirm : [];
+$data_auth_change_password = is_array($data_auth_change_password ?? null) ? $data_auth_change_password : [];
 $sectionPagination = is_array($sectionPagination ?? null) ? $sectionPagination : [];
 $sectionFilter = is_array($sectionFilter ?? null) ? $sectionFilter : [];
 $apiBase = (string)($apiBase ?? '/vue_catalog/api/v1/');
@@ -54,7 +56,7 @@ $showBreadcrumbs = ($showBreadcrumbs ?? true) !== false;
         <nav class="site-nav" aria-label="Основное меню">
             <a href="/" class="site-nav__link">Главная</a>
             <a href="/catalog/" class="site-nav__link">Каталог</a>
-            <div id="app-cart-nav"></div>
+            <div id="app-site-header"></div>
         </nav>
     </div>
 </header>
@@ -83,10 +85,20 @@ $showBreadcrumbs = ($showBreadcrumbs ?? true) !== false;
 
 <!-- Передаём данные из PHP в JS -->
 <script>
+    <?php
+    $bxUser = $GLOBALS['USER'];
+    $bxUserId = is_object($bxUser) ? (int)$bxUser->GetID() : 0;
+    $bxUserName = '';
+    if ($bxUserId > 0 && is_object($bxUser)) {
+        $bxUserName = trim((string)$bxUser->GetFirstName() . ' ' . (string)$bxUser->GetLastName());
+    }
+    ?>
     window.__BX__ = {
         sessid:  '<?= bitrix_sessid() ?>',
         apiBase: <?= json_encode(rtrim($apiBase, '/') . '/', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>,
-        userId:  <?= (int)$GLOBALS['USER']->GetID() ?>,
+        userId:  <?= $bxUserId ?>,
+        userName: <?= json_encode($bxUserName, JSON_UNESCAPED_UNICODE) ?>,
+        isAuthorized: <?= $bxUserId > 0 ? 'true' : 'false' ?>,
     };
 
     window.__PAGE_DATA__ = {
@@ -117,13 +129,15 @@ $showBreadcrumbs = ($showBreadcrumbs ?? true) !== false;
         order: {
             data: <?= json_encode($data_order, JSON_UNESCAPED_UNICODE) ?>,
         },
+        authConfirm: <?= json_encode($data_auth_confirm, JSON_UNESCAPED_UNICODE) ?>,
+        authChangePassword: <?= json_encode($data_auth_change_password, JSON_UNESCAPED_UNICODE) ?>,
     };
 </script>
 
 <?php if ($showBreadcrumbs): ?>
     <script type="module" src="<?= htmlspecialcharsbx($jsBase) ?>app-breadcrumbs.js"></script>
 <?php endif; ?>
-<script type="module" src="<?= htmlspecialcharsbx($jsBase) ?>app-cart-nav.js"></script>
+<script type="module" src="<?= htmlspecialcharsbx($jsBase) ?>app-site-header.js"></script>
 
 <!-- JS подключается в конце body, только если нужен на этой странице -->
 <?php if (!empty($jsEntry)): ?>

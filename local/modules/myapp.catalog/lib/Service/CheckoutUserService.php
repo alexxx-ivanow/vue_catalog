@@ -282,7 +282,7 @@ final class CheckoutUserService
      *
      * @return list<int>
      */
-    private static function resolveRegistrationGroupIds(): array
+    public static function resolveRegistrationGroupIds(): array
     {
         $siteId = (string)Context::getCurrent()->getSite();
         $raw = (string)Option::get('main', 'new_user_registration_def_group', '', $siteId);

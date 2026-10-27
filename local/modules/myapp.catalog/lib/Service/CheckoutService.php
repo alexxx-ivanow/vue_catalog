@@ -895,7 +895,7 @@ class CheckoutService
         ];
     }
 
-    private static function canViewOrder(Order $order): bool
+    public static function canViewOrder(Order $order): bool
     {
         global $USER;
 

@@ -29,8 +29,12 @@ export function getReadHeaders() {
     };
 }
 
-export async function apiGet(url) {
-    const res = await fetch(url, { headers: getReadHeaders() });
+export async function apiGet(url, options = {}) {
+    const res = await fetch(url, {
+        headers: getReadHeaders(),
+        credentials: 'same-origin',
+        cache: options.cache || 'default',
+    });
     const data = await res.json();
     return { res, data };
 }
@@ -41,6 +45,8 @@ export async function apiPost(url, body, options = {}) {
         method: 'POST',
         headers: getJsonHeaders(),
         body: JSON.stringify(payload),
+        credentials: 'same-origin',
+        cache: 'no-store',
     };
     if (options.signal) {
         fetchOptions.signal = options.signal;
