@@ -29,6 +29,7 @@ $optAutoLoginAfterGuestOrder = 'auto_login_after_guest_order';
 $optShowCatalogFilter = Assets::OPT_SHOW_CATALOG_FILTER;
 $optCatalogPriceTypeCode = Assets::OPT_CATALOG_PRICE_TYPE_CODE;
 $optFilterPropertyCodes = Assets::OPT_FILTER_PROPERTY_CODES;
+$optCardPropertyCodes = Assets::OPT_CARD_PROPERTY_CODES;
 $defaultCatalogIblockId = 2;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
@@ -54,6 +55,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
         (string)json_encode($propertyCodes, JSON_UNESCAPED_UNICODE)
     );
 
+    $postedCardCodes = $_POST[$optCardPropertyCodes] ?? [];
+    $cardPropertyCodes = Assets::normalizePropertyCodes(is_array($postedCardCodes) ? $postedCardCodes : []);
+    Option::set(
+        $moduleId,
+        $optCardPropertyCodes,
+        (string)json_encode($cardPropertyCodes, JSON_UNESCAPED_UNICODE)
+    );
+
     $postedIblockId = (int)($_POST[$optCatalogIblockId] ?? 0);
     if ($postedIblockId > 0) {
         Option::set($moduleId, $optCatalogIblockId, (string)$postedIblockId);
@@ -71,6 +80,7 @@ $autoLoginAfterGuestOrder = Option::get($moduleId, $optAutoLoginAfterGuestOrder,
 $showCatalogFilter = Assets::showCatalogFilter();
 $catalogPriceTypeCode = Assets::catalogPriceTypeCode();
 $filterPropertyCodes = Assets::filterPropertyCodes();
+$cardPropertyCodes = Assets::cardPropertyCodes();
 $catalogCacheTtl = Assets::catalogCacheTtl();
 $catalogIblockId = (int)Option::get($moduleId, $optCatalogIblockId, (string)$defaultCatalogIblockId);
 if ($catalogIblockId <= 0) {
@@ -134,6 +144,34 @@ $tabControl->Begin();
             <label class="adm-designed-checkbox-label" for="MYAPP_CATALOG_AUTO_LOGIN_GUEST"></label>
         </td>
     </tr>
+    <tr class="heading"><td colspan="2"><?= Loc::getMessage('MYAPP_CATALOG_OPT_CARD_SECTION') ?></td></tr>
+    <tr>
+        <td width="50%" class="adm-detail-content-cell-l" style="vertical-align: top;">
+            <?= Loc::getMessage('MYAPP_CATALOG_OPT_CARD_PROPS') ?>
+            <br>
+            <small><?= Loc::getMessage('MYAPP_CATALOG_OPT_CARD_PROPS_HINT') ?></small>
+        </td>
+        <td width="50%" class="adm-detail-content-cell-r">
+            <div id="myapp-catalog-card-props">
+                <?php foreach ($cardPropertyCodes as $propertyCode): ?>
+                    <div class="myapp-catalog-prop-row" style="margin-bottom: 8px;">
+                        <input
+                            type="text"
+                            name="<?= htmlspecialcharsbx($optCardPropertyCodes) ?>[]"
+                            value="<?= htmlspecialcharsbx($propertyCode) ?>"
+                            maxlength="50"
+                        >
+                        <button type="button" class="adm-btn myapp-catalog-prop-remove">
+                            <?= Loc::getMessage('MYAPP_CATALOG_OPT_CARD_PROPS_REMOVE') ?>
+                        </button>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <button type="button" class="adm-btn" id="myapp-catalog-card-prop-add">
+                <?= Loc::getMessage('MYAPP_CATALOG_OPT_CARD_PROPS_ADD') ?>
+            </button>
+        </td>
+    </tr>
     <tr class="heading"><td colspan="2"><?= Loc::getMessage('MYAPP_CATALOG_OPT_FILTER_SECTION') ?></td></tr>
     <tr>
         <td width="50%" class="adm-detail-content-cell-l">
@@ -182,14 +220,14 @@ $tabControl->Begin();
         <td width="50%" class="adm-detail-content-cell-r">
             <div id="myapp-catalog-filter-props">
                 <?php foreach ($filterPropertyCodes as $propertyCode): ?>
-                    <div class="myapp-catalog-filter-prop" style="margin-bottom: 8px;">
+                    <div class="myapp-catalog-prop-row" style="margin-bottom: 8px;">
                         <input
                             type="text"
                             name="<?= htmlspecialcharsbx($optFilterPropertyCodes) ?>[]"
                             value="<?= htmlspecialcharsbx($propertyCode) ?>"
                             maxlength="50"
                         >
-                        <button type="button" class="adm-btn myapp-catalog-filter-prop-remove">
+                        <button type="button" class="adm-btn myapp-catalog-prop-remove">
                             <?= Loc::getMessage('MYAPP_CATALOG_OPT_FILTER_PROPS_REMOVE') ?>
                         </button>
                     </div>
@@ -249,47 +287,59 @@ $tabControl->Begin();
 </form>
 <script>
 (function () {
-    var list = document.getElementById('myapp-catalog-filter-props');
-    var addButton = document.getElementById('myapp-catalog-filter-prop-add');
-    if (!list || !addButton) {
-        return;
-    }
-
-    var fieldName = <?= json_encode($optFilterPropertyCodes) ?>;
     var removeLabel = <?= json_encode(Loc::getMessage('MYAPP_CATALOG_OPT_FILTER_PROPS_REMOVE')) ?>;
 
-    function bindRemove(button) {
-        button.addEventListener('click', function () {
-            var row = button.closest('.myapp-catalog-filter-prop');
-            if (row) {
-                row.remove();
-            }
+    function initPropertyCodeList(listId, addButtonId, fieldName) {
+        var list = document.getElementById(listId);
+        var addButton = document.getElementById(addButtonId);
+        if (!list || !addButton) {
+            return;
+        }
+
+        function bindRemove(button) {
+            button.addEventListener('click', function () {
+                var row = button.closest('.myapp-catalog-prop-row');
+                if (row) {
+                    row.remove();
+                }
+            });
+        }
+
+        list.querySelectorAll('.myapp-catalog-prop-remove').forEach(bindRemove);
+
+        addButton.addEventListener('click', function () {
+            var row = document.createElement('div');
+            row.className = 'myapp-catalog-prop-row';
+            row.style.marginBottom = '8px';
+
+            var input = document.createElement('input');
+            input.type = 'text';
+            input.name = fieldName + '[]';
+            input.maxLength = 50;
+
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'adm-btn myapp-catalog-prop-remove';
+            button.textContent = removeLabel;
+            bindRemove(button);
+
+            row.appendChild(input);
+            row.appendChild(document.createTextNode(' '));
+            row.appendChild(button);
+            list.appendChild(row);
+            input.focus();
         });
     }
 
-    list.querySelectorAll('.myapp-catalog-filter-prop-remove').forEach(bindRemove);
-
-    addButton.addEventListener('click', function () {
-        var row = document.createElement('div');
-        row.className = 'myapp-catalog-filter-prop';
-        row.style.marginBottom = '8px';
-
-        var input = document.createElement('input');
-        input.type = 'text';
-        input.name = fieldName + '[]';
-        input.maxLength = 50;
-
-        var button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'adm-btn myapp-catalog-filter-prop-remove';
-        button.textContent = removeLabel;
-        bindRemove(button);
-
-        row.appendChild(input);
-        row.appendChild(document.createTextNode(' '));
-        row.appendChild(button);
-        list.appendChild(row);
-        input.focus();
-    });
+    initPropertyCodeList(
+        'myapp-catalog-card-props',
+        'myapp-catalog-card-prop-add',
+        <?= json_encode($optCardPropertyCodes) ?>
+    );
+    initPropertyCodeList(
+        'myapp-catalog-filter-props',
+        'myapp-catalog-filter-prop-add',
+        <?= json_encode($optFilterPropertyCodes) ?>
+    );
 })();
 </script>

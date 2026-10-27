@@ -2,6 +2,7 @@
 
 namespace MyApp\Catalog\Service;
 
+use Bitrix\Main\Context;
 use Bitrix\Main\Loader;
 use Bitrix\Main\Application;
 use Bitrix\Iblock\ElementTable;
@@ -13,7 +14,7 @@ class CatalogService
 {
     public const GOODS_PER_PAGE  = 12;
     public const MAX_GOODS_PER_PAGE = 48;
-    private const PRICE_GROUP_ID = 1;
+    private const FALLBACK_PRICE_GROUP_ID = 1;
 
     private const CACHE_DIR_PRODUCT = '/catalog/product/';
 
@@ -22,12 +23,6 @@ class CatalogService
     private const CACHE_DIR_GOODS_COUNT = '/catalog/goods_count/';
 
     private const CACHE_DIR_FILTERS = '/catalog/filters/';
-
-    // ID свойств из таблицы b_iblock_property
-    public const PROP_MANUFACTURER_ID  = 25;
-    private const PROP_ARTICLE_ID      = 27;
-    public const PROP_SIZES_ID         = 26;
-    private const PROP_MATERIAL_CODE   = 'MATERIAL';
 
     private static function iblockId(): int
     {
@@ -55,7 +50,7 @@ class CatalogService
         while ($row = $res->fetch()) {
             $row['PICTURE'] = (int)$row['PICTURE']
                 ? self::getFilePath((int)$row['PICTURE'])
-                : '/images/no_photo.png';
+                : Assets::NO_PHOTO_IMAGE;
             $sections[] = $row;
         }
 
@@ -87,7 +82,10 @@ class CatalogService
         }
 
         $skipCache = self::shouldSkipCache();
-        $cacheKey = 'product_' . $id;
+        $cacheKey = 'product_' . $id
+            . '_g' . self::catalogPriceGroupId()
+            . '_c' . self::catalogDisplayCurrency()
+            . '_p' . md5(implode(',', Assets::cardPropertyCodes()));
         $cache = \Bitrix\Main\Data\Cache::createInstance();
         if (!$skipCache && $cache->initCache(Assets::catalogCacheTtl(), $cacheKey, self::CACHE_DIR_PRODUCT)) {
             $cached = $cache->getVars();
@@ -118,19 +116,20 @@ class CatalogService
             return null;
         }
 
-        $result['PRICE']          = self::getPrice($id);
+        $result['PRICE'] = self::getPrice($id);
+        $result['CURRENCY'] = self::catalogDisplayCurrency();
         if ($result['DETAIL_PICTURE']) {
             $result['DETAIL_PICTURE'] = self::getFilePath($result['DETAIL_PICTURE']);
         } else {
-            $result['DETAIL_PICTURE'] = '/images/no_photo.png';
+            $result['DETAIL_PICTURE'] = Assets::NO_PHOTO_IMAGE;
         }
 
-        $props = self::fetchProperties([$id]);
-        $p = $props[$id] ?? [];
-        $result['ARTICLE']      = $p['ARTICLE']      ?? '';
-        $result['MANUFACTURER'] = $p['MANUFACTURER'] ?? '';
-        $result['SIZE']         = $p['SIZE'] ?? '';
-        $result['MATERIAL']     = $p['MATERIAL'] ?? '';
+        $properties = self::fetchProductCardProperties($id);
+        $result['properties'] = $properties;
+        $result['ARTICLE'] = self::extractPropertyValueByCode(
+            $properties,
+            Assets::catalogArticlePropertyCode()
+        );
         $section = self::getMainSectionForProduct($id);
         $result['SECTION_ID'] = (int)($section['ID'] ?? 0);
         $result['SECTION_NAME'] = (string)($section['NAME'] ?? '');
@@ -163,6 +162,8 @@ class CatalogService
 
         $page = max(1, $page);
         $limit = self::normalizeGoodsLimit($limit);
+        $sort = self::normalizeGoodsSort((string)($filter['sort'] ?? ''));
+        $filter['sort'] = $sort;
 
         // Кеш — включаем sectionId и нормализованный фильтр в ключ.
         ksort($filter);
@@ -171,6 +172,7 @@ class CatalogService
             . '|' . (Assets::showCatalogFilter() ? '1' : '0')
             . '|' . Assets::catalogPriceTypeCode()
             . '|' . implode(',', Assets::filterPropertyCodes())
+            . '|' . self::catalogDisplayCurrency()
         );
         $cache = \Bitrix\Main\Data\Cache::createInstance();
         if (!$skipCache && $cache->initCache(Assets::catalogCacheTtl(), $cacheKey, self::CACHE_DIR_GOODS)) {
@@ -276,14 +278,17 @@ class CatalogService
 
         $article = trim((string)($filter['article'] ?? ''));
         if ($article !== '') {
-            $articleEscaped = $sqlHelper->forSql($article);
-            $whereParts[] = "EXISTS (
-                SELECT 1
-                FROM b_iblock_element_property p_article
-                WHERE p_article.IBLOCK_ELEMENT_ID = e.ID
-                  AND p_article.IBLOCK_PROPERTY_ID = " . self::PROP_ARTICLE_ID . "
-                  AND p_article.VALUE LIKE '%{$articleEscaped}%'
-            )";
+            $articlePropertyId = self::getPropertyIdByCode(Assets::catalogArticlePropertyCode());
+            if ($articlePropertyId > 0) {
+                $articleEscaped = $sqlHelper->forSql($article);
+                $whereParts[] = "EXISTS (
+                    SELECT 1
+                    FROM b_iblock_element_property p_article
+                    WHERE p_article.IBLOCK_ELEMENT_ID = e.ID
+                      AND p_article.IBLOCK_PROPERTY_ID = {$articlePropertyId}
+                      AND p_article.VALUE LIKE '%{$articleEscaped}%'
+                )";
+            }
         }
 
         $selectedProperties = [];
@@ -317,10 +322,16 @@ class CatalogService
             if ($hasPriceFrom || $hasPriceTo) {
                 $priceFrom = $hasPriceFrom ? (float)$filter['price_from'] : null;
                 $priceTo = $hasPriceTo ? (float)$filter['price_to'] : null;
+                $priceFrom = $priceFrom !== null
+                    ? self::convertCatalogPrice($priceFrom, self::catalogDisplayCurrency(), self::catalogPriceStorageCurrency())
+                    : null;
+                $priceTo = $priceTo !== null
+                    ? self::convertCatalogPrice($priceTo, self::catalogDisplayCurrency(), self::catalogPriceStorageCurrency())
+                    : null;
 
                 $priceJoin = "INNER JOIN b_catalog_price cp
                     ON cp.PRODUCT_ID = e.ID
-                   AND cp.CATALOG_GROUP_ID = " . self::filterPriceGroupId();
+                   AND cp.CATALOG_GROUP_ID = " . self::catalogPriceGroupId();
                 if ($priceFrom !== null) {
                     $priceJoin .= " AND cp.PRICE >= {$priceFrom}";
                 }
@@ -343,20 +354,23 @@ class CatalogService
             $perfForQueries = &$perf;
         }
 
+        $sortParts = self::goodsSortSqlParts($sort);
+
         $stageStartedAt = microtime(true);
         $scopedIds = null;
         if ($useSectionFastPath) {
             // Один проход по секции даёт и total, и порядок: раньше COUNT и ORDER BY
             // дважды делали один и тот же JOIN по всем товарам секции.
+            $scopeSortJoin = $sortParts['join'] !== '' ? "\n" . $sortParts['join'] : '';
             $scopeSql = "
                 SELECT e.ID
                 FROM b_iblock_section_element se
                 INNER JOIN b_iblock_element e
-                    ON e.ID = se.IBLOCK_ELEMENT_ID
+                    ON e.ID = se.IBLOCK_ELEMENT_ID{$scopeSortJoin}
                 WHERE se.IBLOCK_SECTION_ID IN ({$sectionIdsSql})
                   AND e.IBLOCK_ID = " . self::iblockId() . "
                   AND e.ACTIVE = 'Y'
-                ORDER BY e.SORT ASC, e.ID DESC
+                ORDER BY {$sortParts['orderBy']}
             ";
             $scopeRes = self::queryWithPerf($db, $scopeSql, $perfForQueries, 'goods_section_scope');
             $seen = [];
@@ -431,17 +445,21 @@ class CatalogService
             }
         } else {
             $where = implode(' AND ', $whereParts);
-            $joins = !empty($joinParts) ? "\n" . implode("\n", $joinParts) : '';
+            $listJoinParts = $joinParts;
+            if ($sortParts['join'] !== '') {
+                $listJoinParts[] = $sortParts['join'];
+            }
+            $joins = !empty($listJoinParts) ? "\n" . implode("\n", $listJoinParts) : '';
             $fromSql = "FROM b_iblock_element e{$joins}";
             $groupBy = $needsDistinct
-                ? 'GROUP BY e.ID, e.NAME, e.CODE, e.PREVIEW_TEXT, e.DETAIL_PICTURE, e.SORT'
+                ? 'GROUP BY e.ID, e.NAME, e.CODE, e.PREVIEW_TEXT, e.DETAIL_PICTURE, e.SORT' . $sortParts['groupByExtra']
                 : '';
             $sql = "
                 SELECT e.ID, e.NAME, e.CODE, e.PREVIEW_TEXT, e.DETAIL_PICTURE
                 {$fromSql}
                 WHERE {$where}
                 {$groupBy}
-                ORDER BY e.SORT ASC, e.ID DESC
+                ORDER BY {$sortParts['orderBy']}
                 LIMIT {$limit} OFFSET {$offset}
             ";
             $res = self::queryWithPerf($db, $sql, $perfForQueries, 'goods_list');
@@ -482,9 +500,10 @@ class CatalogService
             $detailPictureId = (int)$item['DETAIL_PICTURE'];
 
             $item['DETAIL_PICTURE'] = $detailPictureId > 0
-                ? ($pictureMap[$detailPictureId] ?? '/images/no_photo.png')
-                : '/images/no_photo.png';
+                ? ($pictureMap[$detailPictureId] ?? Assets::NO_PHOTO_IMAGE)
+                : Assets::NO_PHOTO_IMAGE;
             $item['PRICE'] = $prices[$id] ?? 0.0;
+            $item['CURRENCY'] = self::catalogDisplayCurrency();
         }
         unset($item);
 
@@ -527,6 +546,55 @@ class CatalogService
         }
 
         return max(1, min(self::MAX_GOODS_PER_PAGE, $intLimit));
+    }
+
+    public static function normalizeGoodsSort(?string $sort): string
+    {
+        $value = trim((string)$sort);
+        $allowed = ['default', 'name', 'price_asc', 'price_desc'];
+
+        return in_array($value, $allowed, true) ? $value : 'default';
+    }
+
+    /**
+     * @return array{join: string, orderBy: string, groupByExtra: string}
+     */
+    private static function goodsSortSqlParts(string $sort): array
+    {
+        switch (self::normalizeGoodsSort($sort)) {
+            case 'name':
+                return [
+                    'join' => '',
+                    'orderBy' => 'e.NAME ASC, e.ID ASC',
+                    'groupByExtra' => '',
+                ];
+            case 'price_asc':
+                $groupId = self::catalogPriceGroupId();
+
+                return [
+                    'join' => "LEFT JOIN b_catalog_price cp_sort
+                    ON cp_sort.PRODUCT_ID = e.ID
+                   AND cp_sort.CATALOG_GROUP_ID = {$groupId}",
+                    'orderBy' => 'COALESCE(cp_sort.PRICE, 0) ASC, e.ID ASC',
+                    'groupByExtra' => ', cp_sort.PRICE',
+                ];
+            case 'price_desc':
+                $groupId = self::catalogPriceGroupId();
+
+                return [
+                    'join' => "LEFT JOIN b_catalog_price cp_sort
+                    ON cp_sort.PRODUCT_ID = e.ID
+                   AND cp_sort.CATALOG_GROUP_ID = {$groupId}",
+                    'orderBy' => 'COALESCE(cp_sort.PRICE, 0) DESC, e.ID ASC',
+                    'groupByExtra' => ', cp_sort.PRICE',
+                ];
+            default:
+                return [
+                    'join' => '',
+                    'orderBy' => 'e.SORT ASC, e.ID DESC',
+                    'groupByExtra' => '',
+                ];
+        }
     }
 
     // резервный метод, пригодится при импорте товаров
@@ -746,16 +814,26 @@ class CatalogService
         if (empty($productIds)) return [];
 
         $res = PriceTable::getList([
-            'select' => ['PRODUCT_ID', 'PRICE'],
+            'select' => ['PRODUCT_ID', 'PRICE', 'CURRENCY'],
             'filter' => [
-                '@PRODUCT_ID'      => $productIds,
-                '=CATALOG_GROUP_ID' => self::PRICE_GROUP_ID,
+                '@PRODUCT_ID' => $productIds,
+                '=CATALOG_GROUP_ID' => self::catalogPriceGroupId(),
             ],
         ]);
 
         $prices = [];
+        $displayCurrency = self::catalogDisplayCurrency();
+        $storageCurrency = self::catalogPriceStorageCurrency();
         while ($row = $res->fetch()) {
-            $prices[(int)$row['PRODUCT_ID']] = (float)$row['PRICE'];
+            $fromCurrency = trim((string)($row['CURRENCY'] ?? ''));
+            if ($fromCurrency === '') {
+                $fromCurrency = $storageCurrency;
+            }
+            $prices[(int)$row['PRODUCT_ID']] = self::convertCatalogPrice(
+                (float)$row['PRICE'],
+                $fromCurrency,
+                $displayCurrency
+            );
         }
 
         return $prices;
@@ -786,7 +864,8 @@ class CatalogService
         Loader::includeModule('catalog');
 
         $cacheKey = 'section_' . max(0, $sectionId)
-            . '_g' . self::filterPriceGroupId()
+            . '_g' . self::catalogPriceGroupId()
+            . '_c' . self::catalogDisplayCurrency()
             . '_' . md5(implode("\n", Assets::filterPropertyCodes()));
         $cache = \Bitrix\Main\Data\Cache::createInstance();
         if (!$skipCache && $cache->initCache(Assets::catalogCacheTtl(), $cacheKey, self::CACHE_DIR_FILTERS)) {
@@ -949,17 +1028,31 @@ class CatalogService
         }
 
         $priceSql = "
-            SELECT MIN(cp.PRICE) as MIN_PRICE, MAX(cp.PRICE) as MAX_PRICE
+            SELECT cp.CURRENCY, MIN(cp.PRICE) AS MIN_PRICE, MAX(cp.PRICE) AS MAX_PRICE
             {$scopeFrom}
             INNER JOIN b_catalog_price cp
                 ON cp.PRODUCT_ID = e.ID
-               AND cp.CATALOG_GROUP_ID = " . self::filterPriceGroupId() . "
+               AND cp.CATALOG_GROUP_ID = " . self::catalogPriceGroupId() . "
             WHERE {$scopeWhere}
+            GROUP BY cp.CURRENCY
         ";
-        $row = self::queryWithPerf($db, $priceSql, $perfForQueries, 'filters_price_minmax')->fetch();
-
-        $minPrice = (int)floor((float)($row['MIN_PRICE'] ?? 0));
-        $maxPrice = (int)ceil((float)($row['MAX_PRICE'] ?? 100000));
+        $priceRes = self::queryWithPerf($db, $priceSql, $perfForQueries, 'filters_price_minmax');
+        $displayCurrency = self::catalogDisplayCurrency();
+        $storageCurrency = self::catalogPriceStorageCurrency();
+        $minPrice = null;
+        $maxPrice = null;
+        while ($row = $priceRes->fetch()) {
+            $fromCurrency = trim((string)($row['CURRENCY'] ?? ''));
+            if ($fromCurrency === '') {
+                $fromCurrency = $storageCurrency;
+            }
+            $convertedMin = self::convertCatalogPrice((float)($row['MIN_PRICE'] ?? 0), $fromCurrency, $displayCurrency);
+            $convertedMax = self::convertCatalogPrice((float)($row['MAX_PRICE'] ?? 0), $fromCurrency, $displayCurrency);
+            $minPrice = $minPrice === null ? $convertedMin : min($minPrice, $convertedMin);
+            $maxPrice = $maxPrice === null ? $convertedMax : max($maxPrice, $convertedMax);
+        }
+        $minPrice = (int)floor($minPrice ?? 0);
+        $maxPrice = (int)ceil($maxPrice ?? 100000);
         if ($maxPrice < $minPrice) {
             $maxPrice = $minPrice;
         }
@@ -1053,80 +1146,331 @@ class CatalogService
     // Вспомогательные методы
 
     /**
-     * Свойства нескольких элементов одним SQL-запросом.
-     * Без джоинов — прямое обращение к b_iblock_element_property.
-     * Возвращает [elementId => ['ARTICLE' => ..., 'MANUFACTURER' => ..., 'SIZE' => ...]]
+     * @return list<array{code: string, name: string, type: string, multiple: bool, value?: string, values?: list<string>}>
      */
-    private static function fetchProperties(array $elementIds): array
+    private static function fetchProductCardProperties(int $elementId): array
     {
-        if (empty($elementIds)) return [];
-
-        $db  = Application::getConnection();
-        $ids = implode(',', array_map('intval', $elementIds));
-        $materialPropertyId = self::getPropertyIdByCode(self::PROP_MATERIAL_CODE);
-
-        $propIdsRaw = [
-            self::PROP_ARTICLE_ID,
-            self::PROP_MANUFACTURER_ID,
-            self::PROP_SIZES_ID,
-        ];
-        if ($materialPropertyId > 0) {
-            $propIdsRaw[] = $materialPropertyId;
+        $definitions = self::productCardPropertyDefinitions();
+        if ($elementId <= 0 || $definitions === []) {
+            return [];
         }
-        $propIds = implode(',', array_map('intval', $propIdsRaw));
 
-        // Один запрос — все нужные свойства для всех элементов страницы
+        $defsById = [];
+        foreach ($definitions as $definition) {
+            $defsById[(int)$definition['ID']] = $definition;
+        }
+        $propIdsSql = implode(',', array_map('intval', array_keys($defsById)));
+
+        $db = Application::getConnection();
         $sql = "
             SELECT
-                p.IBLOCK_ELEMENT_ID,
                 p.IBLOCK_PROPERTY_ID,
                 p.VALUE,
                 p.VALUE_ENUM,
-                COALESCE(pe.VALUE, p.VALUE) AS DISPLAY_VALUE
+                COALESCE(pe.VALUE, p.VALUE) AS ENUM_DISPLAY
             FROM b_iblock_element_property p
             LEFT JOIN b_iblock_property_enum pe
                 ON pe.ID = p.VALUE_ENUM
-            WHERE p.IBLOCK_ELEMENT_ID IN ({$ids})
-              AND p.IBLOCK_PROPERTY_ID IN ({$propIds})
+            WHERE p.IBLOCK_ELEMENT_ID = {$elementId}
+              AND p.IBLOCK_PROPERTY_ID IN ({$propIdsSql})
         ";
+        $res = $db->query($sql);
 
-        $res    = $db->query($sql);
-        $result = [];
-
+        $rawByPropId = [];
         while ($row = $res->fetch()) {
-            $elemId = (int)$row['IBLOCK_ELEMENT_ID'];
             $propId = (int)$row['IBLOCK_PROPERTY_ID'];
+            if (!isset($defsById[$propId])) {
+                continue;
+            }
+            $rawByPropId[$propId][] = $row;
+        }
 
-            $key = null;
-            if ($propId === self::PROP_ARTICLE_ID) {
-                $key = 'ARTICLE';
-            } elseif ($propId === self::PROP_MANUFACTURER_ID) {
-                $key = 'MANUFACTURER';
-            } elseif ($propId === self::PROP_SIZES_ID) {
-                $key = 'SIZE';
-            } elseif ($materialPropertyId > 0 && $propId === $materialPropertyId) {
-                $key = 'MATERIAL';
+        $elementIds = [];
+        $sectionIds = [];
+        $fileIds = [];
+        foreach ($rawByPropId as $propId => $rows) {
+            $type = (string)$defsById[$propId]['type'];
+            foreach ($rows as $row) {
+                $value = trim((string)($row['VALUE'] ?? ''));
+                if ($type === 'L') {
+                    continue;
+                }
+                if ($type === 'F') {
+                    $fileId = (int)$value;
+                    if ($fileId > 0) {
+                        $fileIds[$fileId] = $fileId;
+                    }
+                    continue;
+                }
+                if ($type === 'E') {
+                    $linkedId = (int)$value;
+                    if ($linkedId > 0) {
+                        $elementIds[$linkedId] = $linkedId;
+                    }
+                    continue;
+                }
+                if ($type === 'G') {
+                    $linkedId = (int)$value;
+                    if ($linkedId > 0) {
+                        $sectionIds[$linkedId] = $linkedId;
+                    }
+                }
+            }
+        }
+
+        $elementNames = self::resolveElementNames(array_values($elementIds));
+        $sectionNames = self::resolveSectionNames(array_values($sectionIds));
+        $filePaths = self::getFilePaths(array_values($fileIds));
+
+        $result = [];
+        foreach ($definitions as $definition) {
+            $propId = (int)$definition['ID'];
+            $rows = $rawByPropId[$propId] ?? [];
+            if ($rows === []) {
+                continue;
             }
 
-            if ($key !== null) {
-                $result[$elemId][$key] = $row['DISPLAY_VALUE'];
+            $displayValues = self::formatCardPropertyDisplayValues(
+                $definition,
+                $rows,
+                $elementNames,
+                $sectionNames,
+                $filePaths
+            );
+            if ($displayValues === []) {
+                continue;
             }
+
+            $item = [
+                'code' => $definition['CODE'],
+                'name' => $definition['NAME'],
+                'type' => $definition['type'],
+                'multiple' => (bool)$definition['multiple'],
+            ];
+            if ($item['multiple']) {
+                $item['values'] = $displayValues;
+            } else {
+                $item['value'] = $displayValues[0];
+            }
+            $result[] = $item;
         }
 
         return $result;
     }
 
+    /**
+     * @param array{ID: int, CODE: string, NAME: string, type: string, multiple: bool} $definition
+     * @param list<array<string, mixed>> $rows
+     * @param array<int, string> $elementNames
+     * @param array<int, string> $sectionNames
+     * @param array<int, string> $filePaths
+     * @return list<string>
+     */
+    private static function formatCardPropertyDisplayValues(
+        array $definition,
+        array $rows,
+        array $elementNames,
+        array $sectionNames,
+        array $filePaths
+    ): array {
+        $type = (string)$definition['type'];
+        $values = [];
+
+        foreach ($rows as $row) {
+            $stringValue = trim((string)($row['VALUE'] ?? ''));
+            $display = '';
+
+            switch ($type) {
+                case 'L':
+                    $display = trim((string)($row['ENUM_DISPLAY'] ?? ''));
+                    if ($display === '' && $stringValue !== '') {
+                        $display = $stringValue;
+                    }
+                    break;
+                case 'N':
+                    if ($stringValue !== '' && is_numeric($stringValue)) {
+                        $display = rtrim(rtrim(number_format((float)$stringValue, 6, '.', ''), '0'), '.');
+                    }
+                    break;
+                case 'F':
+                    $fileId = (int)$stringValue;
+                    $display = $fileId > 0 ? ($filePaths[$fileId] ?? '') : '';
+                    break;
+                case 'E':
+                    $linkedId = (int)$stringValue;
+                    $display = $linkedId > 0 ? ($elementNames[$linkedId] ?? '') : '';
+                    break;
+                case 'G':
+                    $linkedId = (int)$stringValue;
+                    $display = $linkedId > 0 ? ($sectionNames[$linkedId] ?? '') : '';
+                    break;
+                default:
+                    if (strcasecmp($type, 'HTML') === 0 || strcasecmp($type, 'S:HTML') === 0) {
+                        $display = trim(strip_tags($stringValue));
+                    } else {
+                        $display = $stringValue;
+                    }
+                    break;
+            }
+
+            $display = trim($display);
+            if ($display === '') {
+                continue;
+            }
+            if (!in_array($display, $values, true)) {
+                $values[] = $display;
+            }
+        }
+
+        return $values;
+    }
+
+    /**
+     * @param list<array{code: string, name: string, type: string, multiple: bool, value?: string, values?: list<string>}> $properties
+     */
+    private static function extractPropertyValueByCode(array $properties, string $code): string
+    {
+        $needle = strtoupper(trim($code));
+        if ($needle === '') {
+            return '';
+        }
+
+        foreach ($properties as $property) {
+            if (strcasecmp((string)($property['code'] ?? ''), $needle) !== 0) {
+                continue;
+            }
+            if (!empty($property['multiple']) && is_array($property['values'] ?? null)) {
+                return (string)($property['values'][0] ?? '');
+            }
+
+            return trim((string)($property['value'] ?? ''));
+        }
+
+        return '';
+    }
+
+    /**
+     * @return list<array{ID: int, CODE: string, NAME: string, type: string, multiple: bool}>
+     */
+    private static function productCardPropertyDefinitions(): array
+    {
+        static $cache = null;
+        if ($cache !== null) {
+            return $cache;
+        }
+
+        $codes = Assets::cardPropertyCodes();
+        if ($codes === []) {
+            return $cache = [];
+        }
+
+        $db = Application::getConnection();
+        $sqlHelper = $db->getSqlHelper();
+        $inSql = implode(',', array_map(
+            static fn(string $code): string => "'" . $sqlHelper->forSql($code) . "'",
+            $codes
+        ));
+        $res = $db->query("
+            SELECT ID, CODE, NAME, PROPERTY_TYPE, MULTIPLE
+            FROM b_iblock_property
+            WHERE IBLOCK_ID = " . self::iblockId() . "
+              AND CODE IN ({$inSql})
+        ");
+        $byCode = [];
+        while ($row = $res->fetch()) {
+            $code = (string)$row['CODE'];
+            $byCode[strtoupper($code)] = [
+                'ID' => (int)$row['ID'],
+                'CODE' => $code,
+                'NAME' => (string)$row['NAME'],
+                'type' => (string)$row['PROPERTY_TYPE'],
+                'multiple' => ((string)($row['MULTIPLE'] ?? 'N') === 'Y'),
+            ];
+        }
+
+        $ordered = [];
+        foreach ($codes as $code) {
+            $key = strtoupper($code);
+            if (isset($byCode[$key])) {
+                $ordered[] = $byCode[$key];
+            }
+        }
+
+        return $cache = $ordered;
+    }
+
+    /**
+     * @param list<int> $elementIds
+     * @return array<int, string>
+     */
+    private static function resolveElementNames(array $elementIds): array
+    {
+        $elementIds = array_values(array_filter(array_map('intval', $elementIds)));
+        if ($elementIds === []) {
+            return [];
+        }
+
+        $idsSql = implode(',', $elementIds);
+        $res = Application::getConnection()->query("
+            SELECT ID, NAME
+            FROM b_iblock_element
+            WHERE ID IN ({$idsSql})
+              AND IBLOCK_ID = " . self::iblockId() . "
+        ");
+        $map = [];
+        while ($row = $res->fetch()) {
+            $map[(int)$row['ID']] = (string)$row['NAME'];
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param list<int> $sectionIds
+     * @return array<int, string>
+     */
+    private static function resolveSectionNames(array $sectionIds): array
+    {
+        $sectionIds = array_values(array_filter(array_map('intval', $sectionIds)));
+        if ($sectionIds === []) {
+            return [];
+        }
+
+        $idsSql = implode(',', $sectionIds);
+        $res = Application::getConnection()->query("
+            SELECT ID, NAME
+            FROM b_iblock_section
+            WHERE ID IN ({$idsSql})
+              AND IBLOCK_ID = " . self::iblockId() . "
+        ");
+        $map = [];
+        while ($row = $res->fetch()) {
+            $map[(int)$row['ID']] = (string)$row['NAME'];
+        }
+
+        return $map;
+    }
+
     private static function getPrice(int $productId): float
     {
         $row = PriceTable::getList([
-            'select' => ['PRICE'],
+            'select' => ['PRICE', 'CURRENCY'],
             'filter' => [
-                '=PRODUCT_ID'      => $productId,
-                '=CATALOG_GROUP_ID' => self::PRICE_GROUP_ID,
+                '=PRODUCT_ID' => $productId,
+                '=CATALOG_GROUP_ID' => self::catalogPriceGroupId(),
             ],
         ])->fetch();
 
-        return $row ? (float)$row['PRICE'] : 0.0;
+        if (!$row) {
+            return 0.0;
+        }
+
+        $fromCurrency = trim((string)($row['CURRENCY'] ?? ''));
+        if ($fromCurrency === '') {
+            $fromCurrency = self::catalogPriceStorageCurrency();
+        }
+
+        return self::convertCatalogPrice((float)$row['PRICE'], $fromCurrency, self::catalogDisplayCurrency());
     }
 
     private static function getFilePath(?int $fileId): string
@@ -1204,7 +1548,7 @@ class CatalogService
         ];
     }
 
-    private static function filterPriceGroupId(): int
+    private static function catalogPriceGroupId(): int
     {
         static $resolved = null;
         if ($resolved !== null) {
@@ -1221,9 +1565,95 @@ class CatalogService
             LIMIT 1
         ")->fetch();
         $id = (int)($row['ID'] ?? 0);
-        $resolved = $id > 0 ? $id : self::PRICE_GROUP_ID;
+        $resolved = $id > 0 ? $id : self::FALLBACK_PRICE_GROUP_ID;
 
         return $resolved;
+    }
+
+    public static function catalogDisplayCurrency(): string
+    {
+        static $resolved = null;
+        if ($resolved !== null) {
+            return $resolved;
+        }
+
+        Loader::includeModule('currency');
+        $currency = '';
+
+        if (Loader::includeModule('sale')) {
+            $sessionCurrency = trim((string)($_SESSION['SALE_USER_CURRENCY'] ?? ''));
+            if (strlen($sessionCurrency) === 3) {
+                $currency = strtoupper($sessionCurrency);
+            }
+
+            if ($currency === '') {
+                $siteId = (string)Context::getCurrent()->getSite();
+                if ($siteId !== '' && class_exists(\Bitrix\Sale\Internals\SiteCurrencyTable::class)) {
+                    $siteCurrency = (string)\Bitrix\Sale\Internals\SiteCurrencyTable::getSiteCurrency($siteId);
+                    if (strlen($siteCurrency) === 3) {
+                        $currency = strtoupper($siteCurrency);
+                    }
+                }
+            }
+        }
+
+        if ($currency === '') {
+            $currency = strtoupper((string)\Bitrix\Currency\CurrencyManager::getBaseCurrency());
+        }
+
+        $resolved = $currency !== '' ? $currency : 'RUB';
+
+        return $resolved;
+    }
+
+    private static function catalogPriceStorageCurrency(): string
+    {
+        static $resolved = null;
+        if ($resolved !== null) {
+            return $resolved;
+        }
+
+        Loader::includeModule('catalog');
+        $groupId = self::catalogPriceGroupId();
+        $row = Application::getConnection()->query("
+            SELECT CURRENCY
+            FROM b_catalog_price
+            WHERE CATALOG_GROUP_ID = {$groupId}
+              AND CURRENCY IS NOT NULL
+              AND CURRENCY != ''
+            LIMIT 1
+        ")->fetch();
+
+        $currency = strtoupper(trim((string)($row['CURRENCY'] ?? '')));
+        if ($currency === '') {
+            Loader::includeModule('currency');
+            $currency = strtoupper((string)\Bitrix\Currency\CurrencyManager::getBaseCurrency());
+        }
+
+        $resolved = $currency !== '' ? $currency : 'RUB';
+
+        return $resolved;
+    }
+
+    private static function convertCatalogPrice(float $price, string $fromCurrency, string $toCurrency): float
+    {
+        if ($price <= 0) {
+            return 0.0;
+        }
+
+        $fromCurrency = strtoupper(trim($fromCurrency));
+        $toCurrency = strtoupper(trim($toCurrency));
+        if ($fromCurrency === '' || $toCurrency === '' || $fromCurrency === $toCurrency) {
+            return round($price, 2);
+        }
+
+        Loader::includeModule('currency');
+        $converted = (float)\CCurrencyRates::ConvertCurrency($price, $fromCurrency, $toCurrency);
+        if ($converted <= 0) {
+            return round($price, 2);
+        }
+
+        return round($converted, 2);
     }
 
     /**

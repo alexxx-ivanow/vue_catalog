@@ -22,6 +22,8 @@ final class Assets
 
     public const OPT_FILTER_PROPERTY_CODES = 'catalog_filter_property_codes';
 
+    public const OPT_CARD_PROPERTY_CODES = 'catalog_card_property_codes';
+
     public const OPT_CATALOG_CACHE_TTL = 'catalog_cache_ttl';
 
     public const DEFAULT_CATALOG_IBLOCK_ID = 2;
@@ -33,11 +35,21 @@ final class Assets
     /** @var list<string> */
     public const DEFAULT_FILTER_PROPERTY_CODES = ['MANUFACTURER', 'SIZE', 'MATERIAL'];
 
+    /** @var list<string> */
+    public const DEFAULT_CARD_PROPERTY_CODES = ['ARTICLE', 'MANUFACTURER', 'SIZE', 'MATERIAL'];
+
+    public const DEFAULT_ARTICLE_PROPERTY_CODE = 'ARTICLE';
+
     /** Базовый URL JSON API Vue-каталога (от document root, без завершающего слэша). */
     public const API_V1_BASE = '/vue_catalog/api/v1';
 
     /** Базовый URL ES-модулей Vue-каталога (от document root). */
     public const JS_CATALOG_BASE = '/local/modules/myapp.catalog/js/catalog/';
+
+    /**
+     * Заглушка без фото (файл в install: templates/assets/img/home/no_photo.png).
+     */
+    public const NO_PHOTO_IMAGE = '/local/templates/assets/img/home/no_photo.png';
 
     public const JS_VUE_VENDOR = '/local/modules/myapp.catalog/js/vendor/vue.esm-browser.js';
 
@@ -121,6 +133,32 @@ final class Assets
         }
 
         return self::normalizePropertyCodes($decoded);
+    }
+
+    /**
+     * Коды свойств на детальной карточке. Пустая опция — DEFAULT_CARD_PROPERTY_CODES;
+     * сохранённый JSON [] — свойства не выводятся.
+     *
+     * @return list<string>
+     */
+    public static function cardPropertyCodes(): array
+    {
+        $raw = (string)Option::get(self::MODULE_ID, self::OPT_CARD_PROPERTY_CODES, '');
+        if ($raw === '') {
+            return self::DEFAULT_CARD_PROPERTY_CODES;
+        }
+
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            return self::DEFAULT_CARD_PROPERTY_CODES;
+        }
+
+        return self::normalizePropertyCodes($decoded);
+    }
+
+    public static function catalogArticlePropertyCode(): string
+    {
+        return self::DEFAULT_ARTICLE_PROPERTY_CODE;
     }
 
     /**

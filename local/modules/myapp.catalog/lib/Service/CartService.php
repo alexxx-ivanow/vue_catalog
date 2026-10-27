@@ -4,6 +4,7 @@ namespace MyApp\Catalog\Service;
 
 use Bitrix\Main\Context;
 use Bitrix\Main\Loader;
+use MyApp\Catalog\Config\Assets;
 use Bitrix\Sale\Basket;
 use Bitrix\Sale\BasketBase;
 use Bitrix\Sale\BasketItem;
@@ -37,7 +38,7 @@ class CartService
             $item = $basket->createItem('catalog', $productId);
             $setResult = $item->setFields([
                 'QUANTITY' => $quantity,
-                'CURRENCY' => \Bitrix\Currency\CurrencyManager::getBaseCurrency(),
+                'CURRENCY' => CatalogService::catalogDisplayCurrency(),
                 'LID' => $siteId,
                 'PRODUCT_PROVIDER_CLASS' => 'CCatalogProductProvider',
             ]);
@@ -47,6 +48,8 @@ class CartService
                 ];
             }
         }
+
+        self::alignBasketItemWithCatalog($item, CatalogService::getProduct($productId));
 
         $res = $basket->save();
 
@@ -69,8 +72,10 @@ class CartService
         Loader::includeModule('catalog');
 
         $basket = self::loadBasket();
+        self::syncBasketPricesFromCatalog($basket);
         self::applyDiscounts($basket);
 
+        $displayCurrency = CatalogService::catalogDisplayCurrency();
         $items = [];
         $productIds = [];
 
@@ -110,7 +115,10 @@ class CartService
             $sumBase = round($basePrice * $quantity, 2);
 
             $name = $product['NAME'] ?? (string)$basketItem->getField('NAME');
-            $preview = $product['DETAIL_PICTURE'] ?? '/images/no_photo.png';
+            $preview = trim((string)($product['DETAIL_PICTURE'] ?? ''));
+            if ($preview === '') {
+                $preview = Assets::NO_PHOTO_IMAGE;
+            }
             $article = $product['ARTICLE'] ?? '';
 
             $items[] = [
@@ -127,13 +135,17 @@ class CartService
                 'quantity' => $quantity,
                 'sum' => $sum,
                 'sumBase' => $sumBase,
+                'currency' => (string)($product['CURRENCY'] ?? $displayCurrency),
             ];
         }
 
         return [
             'success' => true,
             'items' => $items,
-            'totals' => self::calculateTotals($basket),
+            'totals' => array_merge(
+                self::calculateTotals($basket),
+                ['currency' => $displayCurrency]
+            ),
         ];
     }
 
@@ -221,6 +233,89 @@ class CartService
         }
 
         return self::getCart();
+    }
+
+    private static function syncBasketPricesFromCatalog(BasketBase $basket): void
+    {
+        if ($basket->isEmpty()) {
+            return;
+        }
+
+        $productIds = [];
+        foreach ($basket as $basketItem) {
+            if (!self::isBuyableItem($basketItem)) {
+                continue;
+            }
+            $productIds[] = (int)$basketItem->getProductId();
+        }
+
+        if (empty($productIds)) {
+            return;
+        }
+
+        $products = [];
+        foreach (array_unique($productIds) as $productId) {
+            $product = CatalogService::getProduct($productId);
+            if ($product) {
+                $products[$productId] = $product;
+            }
+        }
+
+        $changed = false;
+        foreach ($basket as $basketItem) {
+            if (!self::isBuyableItem($basketItem)) {
+                continue;
+            }
+            $productId = (int)$basketItem->getProductId();
+            if (self::alignBasketItemWithCatalog($basketItem, $products[$productId] ?? null)) {
+                $changed = true;
+            }
+        }
+
+        if (!$changed) {
+            return;
+        }
+
+        $basket->save();
+    }
+
+    /**
+     * @param array<string, mixed>|null $product
+     */
+    private static function alignBasketItemWithCatalog(BasketItem $item, ?array $product): bool
+    {
+        if ($product === null) {
+            return false;
+        }
+
+        $catalogPrice = (float)($product['PRICE'] ?? 0);
+        if ($catalogPrice <= 0) {
+            return false;
+        }
+
+        $currency = trim((string)($product['CURRENCY'] ?? ''));
+        if ($currency === '') {
+            $currency = CatalogService::catalogDisplayCurrency();
+        }
+
+        $currentPrice = (float)$item->getPrice();
+        $currentBasePrice = (float)$item->getBasePrice();
+        $currentCurrency = strtoupper(trim((string)$item->getField('CURRENCY')));
+        $currency = strtoupper($currency);
+
+        $priceMatches = abs($currentPrice - $catalogPrice) < 0.009
+            && abs($currentBasePrice - $catalogPrice) < 0.009;
+        if ($priceMatches && $currentCurrency === $currency && $item->getField('CUSTOM_PRICE') === 'Y') {
+            return false;
+        }
+
+        $item->setField('CUSTOM_PRICE', 'Y');
+        $item->setField('CURRENCY', $currency);
+        $item->setField('BASE_PRICE', $catalogPrice);
+        $item->setField('PRICE', $catalogPrice);
+        $item->setField('DISCOUNT_PRICE', 0);
+
+        return true;
     }
 
     private static function loadBasket(): BasketBase

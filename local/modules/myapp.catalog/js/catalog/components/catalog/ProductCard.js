@@ -1,6 +1,7 @@
 import { ref } from 'vue';
 import { catalogApiUrl, getJsonHeaders } from '../../api-client.js';
 import { syncCartCountFromResponse } from '../../cart-counter.js';
+import { formatCatalogPrice } from '../../format-catalog-price.js';
 
 export default {
     name: 'ProductCard',
@@ -44,7 +45,11 @@ export default {
             }
         }
 
-        return { adding, added, handleAddToCart };
+        function displayPrice(product) {
+            return formatCatalogPrice(product?.PRICE, product?.CURRENCY);
+        }
+
+        return { adding, added, handleAddToCart, displayPrice };
     },
 
     template: `
@@ -55,7 +60,7 @@ export default {
                 </p>
                 <p class="catalog_item__name">{{ product.NAME }}</p>
                 <p class="catalog_item__desc">{{ product.PREVIEW_TEXT }}</p>
-                <p class="catalog_item__price">{{ product.PRICE }} ₽</p>
+                <p class="catalog_item__price">{{ displayPrice(product) }}</p>
             </a>
             <button
                 class="catalog_item__btn"

@@ -3,7 +3,8 @@ import CatalogPagination from './CatalogPagination.js';
 import CatalogFilter from '../filter/CatalogFilter.js';
 import { catalogApiUrl, getReadHeaders } from '../../api-client.js';
 import { clampFilterPrices, normalizePriceBounds } from '../../filter-price-bounds.js';
-import { appendCatalogQuery, readPropertiesFromSearch } from '../../filter-query.js';
+import { appendCatalogQuery, readPropertiesFromSearch, readSortFromSearch } from '../../filter-query.js';
+import CatalogSortSelect from './CatalogSortSelect.js';
 import { smoothScrollToElement } from '../../scroll-with-sticky-header.js';
 
 const SKELETON_PRODUCT_COUNT = 8;
@@ -24,6 +25,7 @@ function readInitialStateFromUrl() {
     return {
         page,
         limit,
+        sort: readSortFromSearch(params),
         filter: {
             properties: readPropertiesFromSearch(params),
             price_from: priceFromRaw !== null && priceFromRaw !== '' ? Number(priceFromRaw) : 0,
@@ -76,7 +78,7 @@ function readInitialSectionFromPage(urlState) {
 
 export default {
     name: 'SectionList',
-    components: { ProductCard, CatalogPagination, CatalogFilter },
+    components: { ProductCard, CatalogPagination, CatalogFilter, CatalogSortSelect },
     data() {
         const urlState = readInitialStateFromUrl();
         const initial = readInitialSectionFromPage(urlState);
@@ -103,6 +105,7 @@ export default {
                     ? initial.filterMeta
                     : normalizeFilterMeta(null),
                 filter: initial ? initial.filter : urlState.filter,
+                sort: urlState.sort,
             },
             skeletonProductCount: SKELETON_PRODUCT_COUNT,
             isInitialLoad: !initial,
@@ -170,6 +173,13 @@ export default {
 
             return params;
         },
+        buildGoodsRequestParams() {
+            const params = this.buildFilterParams();
+            if (this.store.sort && this.store.sort !== 'default') {
+                params.sort = this.store.sort;
+            }
+            return params;
+        },
         async loadFilters() {
             try {
                 const params = new URLSearchParams({
@@ -199,7 +209,7 @@ export default {
             try {
                 const params = new URLSearchParams();
                 const requestParams = {
-                    ...this.buildFilterParams(),
+                    ...this.buildGoodsRequestParams(),
                     section: this.store.sectionId,
                     page: resetPage ? 1 : page,
                     limit: this.store.limit,
@@ -227,6 +237,13 @@ export default {
         async applyFilter() {
             await this.loadGoods({ page: 1, resetPage: true });
         },
+        async onSortChange(sort) {
+            if (this.store.sort === sort) {
+                return;
+            }
+            this.store.sort = sort;
+            await this.loadGoods({ page: 1, resetPage: true });
+        },
         onPageData(data) {
             this.store.items = data;
             this.store.total = Number(data.total || 0);
@@ -241,6 +258,11 @@ export default {
                 nextUrl.searchParams.delete('page');
             } else {
                 nextUrl.searchParams.set('page', String(this.store.page));
+            }
+            if (!this.store.sort || this.store.sort === 'default') {
+                nextUrl.searchParams.delete('sort');
+            } else {
+                nextUrl.searchParams.set('sort', this.store.sort);
             }
             nextUrl.searchParams.delete('price_from');
             nextUrl.searchParams.delete('price_to');
@@ -321,7 +343,12 @@ export default {
 
                     <div class="catalog-page__toolbar">
                         <span v-if="store.loading" class="catalog-skeleton-line catalog-skeleton-line--toolbar" aria-hidden="true"></span>
-                        <span v-else>Найдено: {{ store.total }}</span>
+                        <span v-else class="catalog-page__toolbar-count">Найдено: {{ store.total }}</span>
+                        <CatalogSortSelect
+                            :model-value="store.sort"
+                            :disabled="store.loading"
+                            @update:model-value="onSortChange"
+                        />
                     </div>
 
                     <div v-if="store.loading" class="catalog_list" aria-busy="true" aria-label="Загрузка товаров">
@@ -359,7 +386,7 @@ export default {
                         :total-pages="store.pages"
                         :limit="store.limit"
                         :section-id="store.sectionId"
-                        :request-params="buildFilterParams()"
+                        :request-params="buildGoodsRequestParams()"
                         @page-data="onPageData"
                     />
                 </section>

@@ -79,6 +79,7 @@ class CatalogController extends BasePageController
             'price_from' => $showFilter && $priceFrom > $minPrice ? $priceFrom : null,
             'price_to' => $showFilter && $priceTo < $maxPrice ? $priceTo : null,
             'properties' => $properties,
+            'sort' => CatalogService::normalizeGoodsSort($request->get('sort')),
         ];
 
         $page = max(1, (int)$request->get('page') ?: 1);

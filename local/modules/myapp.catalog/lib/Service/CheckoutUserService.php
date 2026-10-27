@@ -2,6 +2,7 @@
 
 namespace MyApp\Catalog\Service;
 
+use Bitrix\Main\Config\Option;
 use Bitrix\Main\Context;
 use Bitrix\Main\Loader;
 use Bitrix\Main\Security\Random;
@@ -197,8 +198,6 @@ final class CheckoutUserService
     {
         $password = Random::getString(10);
         $siteId = Context::getCurrent()->getSite() ?: SITE_ID;
-        $groupId = self::resolveRegisteredGroupId();
-
         $fields = [
             'LOGIN' => $email,
             'EMAIL' => $email,
@@ -207,7 +206,7 @@ final class CheckoutUserService
             'PASSWORD' => $password,
             'CONFIRM_PASSWORD' => $password,
             'ACTIVE' => 'Y',
-            'GROUP_ID' => $groupId > 0 ? [$groupId] : [],
+            'GROUP_ID' => self::resolveRegistrationGroupIds(),
         ];
 
         $user = new \CUser();
@@ -277,14 +276,29 @@ final class CheckoutUserService
         $user->Update($userId, $update);
     }
 
-    private static function resolveRegisteredGroupId(): int
+    /**
+     * Группы из настройки главного модуля «При регистрации добавлять в группу»
+     * (как у CUser::Register).
+     *
+     * @return list<int>
+     */
+    private static function resolveRegistrationGroupIds(): array
     {
-        $groupId = 0;
-        if (function_exists('CGroup::GetIDByCode')) {
-            $groupId = (int)\CGroup::GetIDByCode('REGISTERED_USERS');
+        $siteId = (string)Context::getCurrent()->getSite();
+        $raw = (string)Option::get('main', 'new_user_registration_def_group', '', $siteId);
+        if ($raw === '') {
+            return [];
         }
 
-        return $groupId > 0 ? $groupId : 2;
+        $groupIds = [];
+        foreach (explode(',', $raw) as $part) {
+            $groupId = (int)trim($part);
+            if ($groupId > 0) {
+                $groupIds[] = $groupId;
+            }
+        }
+
+        return array_values(array_unique($groupIds));
     }
 
     private static function pickValue(array $values, array $codes): string

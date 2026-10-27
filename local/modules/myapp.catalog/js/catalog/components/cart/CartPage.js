@@ -1,6 +1,7 @@
 import AppPreloader from '../common/AppPreloader.js';
 import { catalogApiUrl, getReadHeaders } from '../../api-client.js';
 import { setCartCount } from '../../cart-counter.js';
+import { formatCatalogPrice } from '../../format-catalog-price.js';
 
 export default {
     name: 'CartPage',
@@ -13,6 +14,7 @@ export default {
                 discount: 0,
                 total: 0,
                 basketCount: 0,
+                currency: 'RUB',
             },
             loading: true,
             loadError: '',
@@ -38,12 +40,8 @@ export default {
                 'X-Bitrix-Csrf-Token': this.getSessid(),
             };
         },
-        formatPrice(value) {
-            const num = Number(value) || 0;
-            return num.toLocaleString('ru-RU', {
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 2,
-            }) + ' ₽';
+        formatPrice(value, currency) {
+            return formatCatalogPrice(value, currency || this.totals.currency);
         },
         itemQuantity(item) {
             return Number(item?.quantity) || 0;
@@ -55,6 +53,7 @@ export default {
                 discount: Number(data?.totals?.discount) || 0,
                 total: Number(data?.totals?.total) || 0,
                 basketCount: Number(data?.totals?.basketCount) || 0,
+                currency: data?.totals?.currency || 'RUB',
             };
             setCartCount(this.totals.basketCount);
         },
@@ -211,12 +210,12 @@ export default {
                                     <a :href="item.url" class="cart_item__name">{{ item.name }}</a>
                                     <p v-if="item.article" class="cart_item__article">Артикул: {{ item.article }}</p>
                                     <p class="cart_item__price">
-                                        <span v-if="item.discount > 0" class="cart_item__price-old">{{ formatPrice(item.basePrice) }}</span>
-                                        <span>{{ formatPrice(item.price) }}</span>
+                                        <span v-if="item.discount > 0" class="cart_item__price-old">{{ formatPrice(item.basePrice, item.currency) }}</span>
+                                        <span>{{ formatPrice(item.price, item.currency) }}</span>
                                     </p>
                                     <p v-if="item.discount > 0" class="cart_item__discount">
-                                        Скидка: −{{ formatPrice(item.discount) }}
-                                        <template v-if="item.quantity > 1"> (всего −{{ formatPrice(item.discountSum) }})</template>
+                                        Скидка: −{{ formatPrice(item.discount, item.currency) }}
+                                        <template v-if="item.quantity > 1"> (всего −{{ formatPrice(item.discountSum, item.currency) }})</template>
                                     </p>
                                 </div>
 
@@ -245,8 +244,8 @@ export default {
                                 </div>
 
                                 <div class="cart_item__sum">
-                                    <div v-if="item.discountSum > 0" class="cart_item__sum-old">{{ formatPrice(item.sumBase) }}</div>
-                                    <div>{{ formatPrice(item.sum) }}</div>
+                                    <div v-if="item.discountSum > 0" class="cart_item__sum-old">{{ formatPrice(item.sumBase, item.currency) }}</div>
+                                    <div>{{ formatPrice(item.sum, item.currency) }}</div>
                                 </div>
 
                                 <button

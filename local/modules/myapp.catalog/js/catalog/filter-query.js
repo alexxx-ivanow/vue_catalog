@@ -1,3 +1,13 @@
+export const CATALOG_SORT_VALUES = ['default', 'name', 'price_asc', 'price_desc'];
+
+export function readSortFromSearch(params) {
+    const raw = String(params.get('sort') ?? '').trim();
+    if (CATALOG_SORT_VALUES.includes(raw)) {
+        return raw;
+    }
+    return 'default';
+}
+
 export function appendCatalogQuery(params, requestParams) {
     Object.entries(requestParams || {}).forEach(([key, value]) => {
         if (value && typeof value === 'object' && !Array.isArray(value)) {

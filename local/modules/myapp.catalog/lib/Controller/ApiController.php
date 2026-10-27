@@ -67,6 +67,7 @@ class ApiController
                 ? (float)$request->get('price_to')
                 : null,
             'properties' => $properties,
+            'sort' => CatalogService::normalizeGoodsSort($request->get('sort')),
         ];
 
         $page  = max(1, (int)$request->get('page') ?: 1);
