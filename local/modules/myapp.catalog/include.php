@@ -27,6 +27,10 @@ Loader::registerAutoLoadClasses('myapp.catalog', [
     'MyApp\\Catalog\\Config\\Assets' => 'lib/Config/Assets.php',
     'MyApp\\Catalog\\Config\\Templates' => 'lib/Config/Templates.php',
     'MyApp\\Catalog\\Event\\CatalogCacheHandler' => 'lib/Event/CatalogCacheHandler.php',
+    'MyApp\\Catalog\\Install\\FilterAggregateSchema' => 'lib/Install/FilterAggregateSchema.php',
+    'MyApp\\Catalog\\Service\\FilterAggregateService' => 'lib/Service/FilterAggregateService.php',
 ]);
 
 \MyApp\Catalog\Event\CatalogCacheHandler::ensurePersistentHandlers();
+\MyApp\Catalog\Install\FilterAggregateSchema::ensureTable();
+\MyApp\Catalog\Install\FilterAggregateSchema::ensurePerformanceIndexes();

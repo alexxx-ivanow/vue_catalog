@@ -4,6 +4,7 @@ use Bitrix\Main\Config\Option;
 use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
 use MyApp\Catalog\Config\Assets;
+use MyApp\Catalog\Service\CatalogService;
 
 /**
  * @global CUser $USER
@@ -73,6 +74,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && check_bitrix_sessid()) {
         $postedCacheTtl = Assets::DEFAULT_CATALOG_CACHE_TTL;
     }
     Option::set($moduleId, $optCatalogCacheTtl, (string)$postedCacheTtl);
+
+    CatalogService::clearCache();
 }
 
 $useBitrixVue = Option::get($moduleId, $optUseBitrixVue, 'N') === 'Y';

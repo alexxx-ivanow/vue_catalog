@@ -35,6 +35,7 @@ class myapp_catalog extends CModule
     public function DoInstall()
     {
         ModuleManager::registerModule($this->MODULE_ID);
+        $this->InstallDB();
         $this->installTemplates();
         $this->installRoutes();
         $this->installEvents();
@@ -44,8 +45,53 @@ class myapp_catalog extends CModule
     {
         $this->uninstallEvents();
         $this->uninstallRoutes();
+        $this->UnInstallDB();
         Option::delete($this->MODULE_ID);
         ModuleManager::unRegisterModule($this->MODULE_ID);
+    }
+
+    public function InstallDB(): void
+    {
+        global $DB;
+
+        $this->registerInstallAutoload();
+
+        if (!isset($DB) || !is_object($DB)) {
+            \MyApp\Catalog\Install\FilterAggregateSchema::ensureTable();
+            \MyApp\Catalog\Install\FilterAggregateSchema::ensurePerformanceIndexes();
+
+            return;
+        }
+
+        $sqlPath = __DIR__ . '/db/mysql/install.sql';
+        if (is_file($sqlPath)) {
+            $DB->RunSQLBatch($sqlPath);
+        }
+
+        \MyApp\Catalog\Install\FilterAggregateSchema::ensurePerformanceIndexes();
+        Option::set($this->MODULE_ID, 'filter_aggregate_table_ready', 'Y');
+    }
+
+    public function UnInstallDB(): void
+    {
+        global $DB;
+
+        $this->registerInstallAutoload();
+
+        $sqlPath = __DIR__ . '/db/mysql/uninstall.sql';
+        if (isset($DB) && is_object($DB) && is_file($sqlPath)) {
+            $DB->RunSQLBatch($sqlPath);
+        }
+
+        \MyApp\Catalog\Install\FilterAggregateSchema::resetInstallFlags();
+    }
+
+    private function registerInstallAutoload(): void
+    {
+        $schemaFile = dirname(__DIR__) . '/lib/Install/FilterAggregateSchema.php';
+        if (is_file($schemaFile)) {
+            require_once $schemaFile;
+        }
     }
 
     public function installEvents(): void

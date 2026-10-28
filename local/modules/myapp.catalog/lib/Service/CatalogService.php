@@ -58,8 +58,20 @@ class CatalogService
     }
 
     // Получить LEFT_MARGIN / RIGHT_MARGIN секции — для выборки всех вложенных товаров
+    /** @var array<int, array<string, mixed>|null> */
+    private static array $sectionBoundsRequestCache = [];
+
     public static function getSectionBounds(int $sectionId): ?array
     {
+        $sectionId = (int)$sectionId;
+        if ($sectionId <= 0) {
+            return null;
+        }
+
+        if (array_key_exists($sectionId, self::$sectionBoundsRequestCache)) {
+            return self::$sectionBoundsRequestCache[$sectionId];
+        }
+
         $db  = Application::getConnection();
         $sql = "
         SELECT LEFT_MARGIN, RIGHT_MARGIN, NAME
@@ -70,7 +82,9 @@ class CatalogService
         LIMIT 1
     ";
 
-        return $db->query($sql)->fetch() ?: null;
+        self::$sectionBoundsRequestCache[$sectionId] = $db->query($sql)->fetch() ?: null;
+
+        return self::$sectionBoundsRequestCache[$sectionId];
     }
 
     // Карточка товара
@@ -604,6 +618,7 @@ class CatalogService
         \Bitrix\Main\Data\Cache::clearCache(false, self::CACHE_DIR_GOODS_COUNT);
         \Bitrix\Main\Data\Cache::clearCache(false, self::CACHE_DIR_FILTERS);
         \Bitrix\Main\Data\Cache::clearCache(false, self::CACHE_DIR_PRODUCT);
+        FilterAggregateService::clearAll();
     }
 
     /**
@@ -746,6 +761,31 @@ class CatalogService
         foreach (self::getSectionPath($sectionId) as $item) {
             $taggedCache->clearByTag(self::tagForSection((int)$item['ID']));
         }
+
+        FilterAggregateService::markStaleForSectionPath($sectionId);
+    }
+
+    /**
+     * @return list<int>
+     */
+    public static function getSectionPathIds(int $sectionId): array
+    {
+        $ids = [];
+        foreach (self::getSectionPath($sectionId) as $item) {
+            $ids[] = (int)$item['ID'];
+        }
+
+        return $ids;
+    }
+
+    public static function filtersConfigHash(): string
+    {
+        return md5(
+            self::iblockId()
+            . '|' . self::catalogPriceGroupId()
+            . '|' . self::catalogDisplayCurrency()
+            . '|' . implode("\n", Assets::filterPropertyCodes())
+        );
     }
 
     /**
@@ -840,142 +880,71 @@ class CatalogService
     }
 
     // Значения для фильтра
-    public static function getFilters(int $sectionId = 0): array
+    /**
+     * @return array{enabled: bool, properties: array, price: array{min: int, max: int}}
+     */
+    public static function buildFiltersPayload(int $sectionId, ?array &$perf = null): array
     {
-        $measurePerf = self::shouldMeasurePerf();
-        $skipCache = self::shouldSkipCache();
-        $perfStartedAt = microtime(true);
-        $perf = self::createPerfBag();
-
-        if (!Assets::showCatalogFilter()) {
-            $result = [
-                'enabled' => false,
-                'properties' => [],
-                'price' => ['min' => 0.0, 'max' => 0.0],
-            ];
-            if ($measurePerf) {
-                self::finalizePerf($perf, $perfStartedAt);
-                $result['_perf'] = $perf;
-            }
-            return $result;
-        }
-
         Loader::includeModule('iblock');
         Loader::includeModule('catalog');
 
-        $cacheKey = 'section_' . max(0, $sectionId)
-            . '_g' . self::catalogPriceGroupId()
-            . '_c' . self::catalogDisplayCurrency()
-            . '_' . md5(implode("\n", Assets::filterPropertyCodes()));
-        $cache = \Bitrix\Main\Data\Cache::createInstance();
-        if (!$skipCache && $cache->initCache(Assets::catalogCacheTtl(), $cacheKey, self::CACHE_DIR_FILTERS)) {
-            $result = $cache->getVars();
-            if ($measurePerf) {
-                $perf['cache_hit'] = true;
-                self::finalizePerf($perf, $perfStartedAt);
-                $result['_perf'] = $perf;
-            }
-            return $result;
+        $scope = self::buildFiltersScopeSql($sectionId);
+        if ($scope === null) {
+            return self::emptyFiltersPayload();
         }
-        $filtersCacheStarted = !$skipCache && $cache->startDataCache();
-        $filtersCacheTags = self::cacheTagsForSectionScope($sectionId);
 
         $db = Application::getConnection();
-        $iblockId = self::iblockId();
-        $scopeFrom = "FROM b_iblock_element e";
-        $scopeWhere = "e.IBLOCK_ID = {$iblockId} AND e.ACTIVE = 'Y'";
-        $perfForQueries = null;
-        if ($measurePerf) {
-            $perfForQueries = &$perf;
-        }
-
-        if ($sectionId > 0) {
-            $t = microtime(true);
-            $bounds = self::getSectionBounds($sectionId);
-            if ($measurePerf) {
-                self::perfAddQuery($perf, 'section_bounds', (microtime(true) - $t) * 1000);
-            }
-            if (!$bounds) {
-                $result = self::emptyFiltersPayload();
-                if (!$skipCache) {
-                    self::commitTaggedDataCache($cache, self::CACHE_DIR_FILTERS, $filtersCacheTags, $result, $filtersCacheStarted);
-                }
-                if ($measurePerf) {
-                    self::finalizePerf($perf, $perfStartedAt);
-                    $result['_perf'] = $perf;
-                }
-                return $result;
-            }
-
-            $t = microtime(true);
-            $sectionIds = self::getSectionIdsByBounds(
-                (int)$bounds['LEFT_MARGIN'],
-                (int)$bounds['RIGHT_MARGIN']
-            );
-            if ($measurePerf) {
-                self::perfAddQuery($perf, 'section_ids_by_bounds', (microtime(true) - $t) * 1000, null, count($sectionIds));
-            }
-            if (empty($sectionIds)) {
-                $result = self::emptyFiltersPayload();
-                if (!$skipCache) {
-                    self::commitTaggedDataCache($cache, self::CACHE_DIR_FILTERS, $filtersCacheTags, $result, $filtersCacheStarted);
-                }
-                if ($measurePerf) {
-                    self::finalizePerf($perf, $perfStartedAt);
-                    $result['_perf'] = $perf;
-                }
-                return $result;
-            }
-
-            $sectionIdsSql = implode(',', array_map('intval', $sectionIds));
-            $scopeFrom = "FROM b_iblock_section_element se
-                INNER JOIN b_iblock_element e
-                    ON e.ID = se.IBLOCK_ELEMENT_ID";
-            $scopeWhere = "se.IBLOCK_SECTION_ID IN ({$sectionIdsSql})
-                AND e.IBLOCK_ID = {$iblockId}
-                AND e.ACTIVE = 'Y'";
-            if ($measurePerf) {
-                $perf['meta']['section_ids_count'] = count($sectionIds);
-            }
-        }
+        $scopeFrom = $scope['from'];
+        $scopeWhere = $scope['where'];
+        $perfForQueries = $perf;
 
         $definitions = self::filterPropertyDefinitions();
         $properties = [];
-        if (!empty($definitions)) {
-            $defsById = [];
-            foreach ($definitions as $definition) {
-                $defsById[(int)$definition['ID']] = $definition;
-            }
-            $propIdsSql = implode(',', array_map('intval', array_keys($defsById)));
-
-            $propsSql = "
-                SELECT p.IBLOCK_PROPERTY_ID AS PROP_ID, p.VALUE_ENUM, p.VALUE
-                {$scopeFrom}
-                INNER JOIN b_iblock_element_property p
-                    ON p.IBLOCK_ELEMENT_ID = e.ID
-                   AND p.IBLOCK_PROPERTY_ID IN ({$propIdsSql})
-                WHERE {$scopeWhere}
-                GROUP BY p.IBLOCK_PROPERTY_ID, p.VALUE_ENUM, p.VALUE
-            ";
-            $res = self::queryWithPerf($db, $propsSql, $perfForQueries, 'filters_props');
+        if ($definitions !== []) {
             $enumIdsByProp = [];
             $stringValuesByProp = [];
-            while ($row = $res->fetch()) {
-                $propId = (int)$row['PROP_ID'];
-                $definition = $defsById[$propId] ?? null;
-                if ($definition === null) {
-                    continue;
-                }
+
+            foreach ($definitions as $definition) {
+                $propertyId = (int)$definition['ID'];
+                $code = preg_replace('/[^A-Za-z0-9_]/', '_', (string)$definition['CODE']) ?: 'prop';
+
                 if ($definition['valueKind'] === 'enum') {
-                    $enumId = (int)$row['VALUE_ENUM'];
-                    if ($enumId > 0) {
-                        $enumIdsByProp[$propId][$enumId] = true;
+                    $propsSql = "
+                        SELECT DISTINCT p.VALUE_ENUM AS VALUE_ENUM
+                        {$scopeFrom}
+                        INNER JOIN b_iblock_element_property p
+                            ON p.IBLOCK_ELEMENT_ID = e.ID
+                           AND p.IBLOCK_PROPERTY_ID = {$propertyId}
+                        WHERE {$scopeWhere}
+                          AND p.VALUE_ENUM IS NOT NULL
+                          AND p.VALUE_ENUM > 0
+                    ";
+                    $res = self::queryWithPerf($db, $propsSql, $perfForQueries, 'filters_prop_' . $code);
+                    while ($row = $res->fetch()) {
+                        $enumId = (int)$row['VALUE_ENUM'];
+                        if ($enumId > 0) {
+                            $enumIdsByProp[$propertyId][$enumId] = true;
+                        }
                     }
                     continue;
                 }
-                $value = trim((string)$row['VALUE']);
-                if ($value !== '') {
-                    $stringValuesByProp[$propId][$value] = true;
+
+                $propsSql = "
+                    SELECT DISTINCT p.VALUE AS VALUE
+                    {$scopeFrom}
+                    INNER JOIN b_iblock_element_property p
+                        ON p.IBLOCK_ELEMENT_ID = e.ID
+                       AND p.IBLOCK_PROPERTY_ID = {$propertyId}
+                    WHERE {$scopeWhere}
+                      AND p.VALUE IS NOT NULL
+                      AND p.VALUE <> ''
+                ";
+                $res = self::queryWithPerf($db, $propsSql, $perfForQueries, 'filters_prop_' . $code);
+                while ($row = $res->fetch()) {
+                    $value = trim((string)$row['VALUE']);
+                    if ($value !== '') {
+                        $stringValuesByProp[$propertyId][$value] = true;
+                    }
                 }
             }
 
@@ -986,11 +955,11 @@ class CatalogService
                     $enumIds[$enumId] = true;
                 }
             }
-            if (!empty($enumIds)) {
+            if ($enumIds !== []) {
                 $enumSql = "
                     SELECT ID, PROPERTY_ID, VALUE
                     FROM b_iblock_property_enum
-                    WHERE ID IN (" . implode(',', array_keys($enumIds)) . ")
+                    WHERE ID IN (" . implode(',', array_map('intval', array_keys($enumIds))) . ")
                     ORDER BY SORT ASC, VALUE ASC
                 ";
                 $res = self::queryWithPerf($db, $enumSql, $perfForQueries, 'filters_enum_values');
@@ -1027,12 +996,13 @@ class CatalogService
             }
         }
 
+        $priceGroupId = self::catalogPriceGroupId();
         $priceSql = "
             SELECT cp.CURRENCY, MIN(cp.PRICE) AS MIN_PRICE, MAX(cp.PRICE) AS MAX_PRICE
             {$scopeFrom}
             INNER JOIN b_catalog_price cp
                 ON cp.PRODUCT_ID = e.ID
-               AND cp.CATALOG_GROUP_ID = " . self::catalogPriceGroupId() . "
+               AND cp.CATALOG_GROUP_ID = {$priceGroupId}
             WHERE {$scopeWhere}
             GROUP BY cp.CURRENCY
         ";
@@ -1057,11 +1027,123 @@ class CatalogService
             $maxPrice = $minPrice;
         }
 
-        $result = [
+        return [
             'enabled' => true,
             'properties' => $properties,
             'price' => ['min' => $minPrice, 'max' => $maxPrice],
         ];
+    }
+
+    /**
+     * @return array{from: string, where: string}|null
+     */
+    private static function buildFiltersScopeSql(int $sectionId): ?array
+    {
+        $iblockId = self::iblockId();
+        $sectionId = (int)$sectionId;
+
+        if ($sectionId <= 0) {
+            return [
+                'from' => 'FROM b_iblock_element e',
+                'where' => "e.IBLOCK_ID = {$iblockId} AND e.ACTIVE = 'Y'",
+            ];
+        }
+
+        $bounds = self::getSectionBounds($sectionId);
+        if (!$bounds) {
+            return null;
+        }
+
+        $left = (int)$bounds['LEFT_MARGIN'];
+        $right = (int)$bounds['RIGHT_MARGIN'];
+
+        return [
+            'from' => "FROM b_iblock_section_element se
+                INNER JOIN b_iblock_section s_scope
+                    ON s_scope.ID = se.IBLOCK_SECTION_ID
+                INNER JOIN b_iblock_element e
+                    ON e.ID = se.IBLOCK_ELEMENT_ID",
+            'where' => "s_scope.IBLOCK_ID = {$iblockId}
+                AND s_scope.LEFT_MARGIN >= {$left}
+                AND s_scope.RIGHT_MARGIN <= {$right}
+                AND e.IBLOCK_ID = {$iblockId}
+                AND e.ACTIVE = 'Y'",
+        ];
+    }
+
+    public static function getFilters(int $sectionId = 0): array
+    {
+        $measurePerf = self::shouldMeasurePerf();
+        $skipCache = self::shouldSkipCache();
+        $perfStartedAt = microtime(true);
+        $perf = self::createPerfBag();
+
+        if (!Assets::showCatalogFilter()) {
+            $result = [
+                'enabled' => false,
+                'properties' => [],
+                'price' => ['min' => 0.0, 'max' => 0.0],
+            ];
+            if ($measurePerf) {
+                self::finalizePerf($perf, $perfStartedAt);
+                $result['_perf'] = $perf;
+            }
+            return $result;
+        }
+
+        $configHash = self::filtersConfigHash();
+        $cacheKey = 'section_' . max(0, $sectionId)
+            . '_g' . self::catalogPriceGroupId()
+            . '_c' . self::catalogDisplayCurrency()
+            . '_' . md5(implode("\n", Assets::filterPropertyCodes()));
+        $cache = \Bitrix\Main\Data\Cache::createInstance();
+        if (!$skipCache && $cache->initCache(Assets::catalogCacheTtl(), $cacheKey, self::CACHE_DIR_FILTERS)) {
+            $result = $cache->getVars();
+            if ($measurePerf) {
+                $perf['cache_hit'] = true;
+                self::finalizePerf($perf, $perfStartedAt);
+                $result['_perf'] = $perf;
+            }
+            return $result;
+        }
+
+        $aggregate = FilterAggregateService::read($sectionId);
+        if ($aggregate !== null && $aggregate['config_hash'] === $configHash) {
+            if (!$aggregate['is_stale']) {
+                $result = $aggregate['payload'];
+                if ($measurePerf) {
+                    $perf['aggregate_hit'] = true;
+                    self::finalizePerf($perf, $perfStartedAt);
+                    $result['_perf'] = $perf;
+                }
+                if (!$skipCache) {
+                    $filtersCacheStarted = $cache->startDataCache();
+                    self::commitTaggedDataCache(
+                        $cache,
+                        self::CACHE_DIR_FILTERS,
+                        self::cacheTagsForSectionScope($sectionId),
+                        $result,
+                        $filtersCacheStarted
+                    );
+                }
+                return $result;
+            }
+
+            FilterAggregateService::scheduleRebuild($sectionId);
+            $result = $aggregate['payload'];
+            if ($measurePerf) {
+                $perf['aggregate_stale'] = true;
+                self::finalizePerf($perf, $perfStartedAt);
+                $result['_perf'] = $perf;
+            }
+            return $result;
+        }
+
+        $filtersCacheStarted = !$skipCache && $cache->startDataCache();
+        $filtersCacheTags = self::cacheTagsForSectionScope($sectionId);
+
+        $result = self::buildFiltersPayload($sectionId, $perf);
+        FilterAggregateService::write($sectionId, $result, $configHash, false);
 
         if ($measurePerf) {
             self::finalizePerf($perf, $perfStartedAt);
