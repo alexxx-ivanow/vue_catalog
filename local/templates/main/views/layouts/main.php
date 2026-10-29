@@ -95,26 +95,26 @@ $showBreadcrumbs = ($showBreadcrumbs ?? true) !== false;
     ?>
     window.__BX__ = {
         sessid:  '<?= bitrix_sessid() ?>',
-        apiBase: <?= json_encode(rtrim($apiBase, '/') . '/', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>,
+        apiBase: <?= json_encode(rtrim($apiBase, '/') . '/', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>,
         userId:  <?= $bxUserId ?>,
-        userName: <?= json_encode($bxUserName, JSON_UNESCAPED_UNICODE) ?>,
+        userName: <?= json_encode($bxUserName, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>,
         isAuthorized: <?= $bxUserId > 0 ? 'true' : 'false' ?>,
     };
 
     window.__PAGE_DATA__ = {
         page: {
-            type: <?= json_encode($pageType, JSON_UNESCAPED_UNICODE) ?>,
-            section_id: <?= $sectionId ?>,
+            type: <?= json_encode($pageType, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>,
+            section_id: <?= (int)$sectionId ?>,
         },
         catalog: {
-            items: <?= json_encode($data_sections, JSON_UNESCAPED_UNICODE) ?>,
+            items: <?= json_encode($data_sections, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>,
             total: <?= count($data_sections) ?>,
         },
         section: {
             id: <?= $sectionId ?>,
-            data: <?= json_encode($data_section, JSON_UNESCAPED_UNICODE) ?>,
+            data: <?= json_encode($data_section, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>,
             total: <?= count($data_section['items'] ?? []) ?>,
-            filter: <?= json_encode($sectionFilter, JSON_UNESCAPED_UNICODE) ?>,
+            filter: <?= json_encode($sectionFilter, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>,
             pagination: {
                 page: <?= (int)($sectionPagination['page'] ?? 1) ?>,
                 pages: <?= (int)($sectionPagination['pages'] ?? 1) ?>,
@@ -123,14 +123,14 @@ $showBreadcrumbs = ($showBreadcrumbs ?? true) !== false;
             },
         },
         product: {
-            section_id: <?= $sectionId ?>,
-            data: <?= json_encode($data_product, JSON_UNESCAPED_UNICODE) ?>,
+            section_id: <?= (int)$sectionId ?>,
+            data: <?= json_encode($data_product, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>,
         },
         order: {
-            data: <?= json_encode($data_order, JSON_UNESCAPED_UNICODE) ?>,
+            data: <?= json_encode($data_order, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>,
         },
-        authConfirm: <?= json_encode($data_auth_confirm, JSON_UNESCAPED_UNICODE) ?>,
-        authChangePassword: <?= json_encode($data_auth_change_password, JSON_UNESCAPED_UNICODE) ?>,
+        authConfirm: <?= json_encode($data_auth_confirm, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>,
+        authChangePassword: <?= json_encode($data_auth_change_password, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>,
     };
 </script>
 
