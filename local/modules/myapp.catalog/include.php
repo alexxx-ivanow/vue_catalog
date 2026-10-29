@@ -12,6 +12,7 @@ Loader::registerAutoLoadClasses('myapp.catalog', [
     'MyApp\\Catalog\\Controller\\CheckoutApiController' => 'lib/Controller/CheckoutApiController.php',
     'MyApp\\Catalog\\Controller\\OrderController' => 'lib/Controller/OrderController.php',
     'MyApp\\Catalog\\Controller\\OrderSuccessController' => 'lib/Controller/OrderSuccessController.php',
+    'MyApp\\Catalog\\Controller\\OrderPaymentController' => 'lib/Controller/OrderPaymentController.php',
     'MyApp\\Catalog\\Controller\\PersonalController' => 'lib/Controller/PersonalController.php',
     'MyApp\\Catalog\\Controller\\AuthPageController' => 'lib/Controller/AuthPageController.php',
     'MyApp\\Catalog\\Controller\\AccountApiController' => 'lib/Controller/AccountApiController.php',

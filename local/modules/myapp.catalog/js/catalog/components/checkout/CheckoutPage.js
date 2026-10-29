@@ -3,7 +3,12 @@ import CheckoutPersonType from './CheckoutPersonType.js';
 import CheckoutLocationAutocomplete from './CheckoutLocationAutocomplete.js';
 import CheckoutDeliveryList from './CheckoutDeliveryList.js';
 import CheckoutPaymentList from './CheckoutPaymentList.js';
-import CheckoutPropertiesForm from './CheckoutPropertiesForm.js';
+import CheckoutPropertiesForm, {
+    isCheckoutEmailProperty,
+    isCheckoutPhoneProperty,
+    isValidEmail,
+    isValidRuPhone,
+} from './CheckoutPropertiesForm.js';
 import CheckoutBasketList from './CheckoutBasketList.js';
 import CheckoutTotalsSidebar from './CheckoutTotalsSidebar.js';
 import { apiGet, apiPost, catalogApiUrl } from '../../api-client.js';
@@ -106,12 +111,6 @@ export default {
         'selection.paySystemId'(value, oldValue) {
             if (this.suppressSelectionWatch || value === oldValue) return;
             this.scheduleCalculate();
-        },
-        'selection.properties': {
-            deep: true,
-            handler() {
-                this.scheduleCalculate(false);
-            },
         },
         'selection.deliveryExtra': {
             deep: true,
@@ -277,6 +276,9 @@ export default {
                 if (hasValue) {
                     continue;
                 }
+                if (isCheckoutEmailProperty(property)) {
+                    continue;
+                }
                 const incoming = this.normalizePropertyValue(property.value);
                 if (!incoming) {
                     continue;
@@ -414,13 +416,26 @@ export default {
 
             const propertiesState = this.syncPropertyFields();
             for (const property of this.properties) {
-                if (!property.required) {
+                const keys = [property.code, property.id ? String(property.id) : ''].filter(Boolean);
+                const value = keys
+                    .map((key) => propertiesState[key])
+                    .find((item) => String(item ?? '').trim() !== '');
+
+                if (property.required && !String(value ?? '').trim()) {
+                    errors.push(`Заполните поле: ${property.name}`);
                     continue;
                 }
-                const keys = [property.code, property.id ? String(property.id) : ''].filter(Boolean);
-                const value = keys.map((key) => propertiesState[key]).find((item) => String(item ?? '').trim() !== '');
-                if (!String(value ?? '').trim()) {
-                    errors.push(`Заполните поле: ${property.name}`);
+
+                if (isCheckoutEmailProperty(property) && String(value ?? '').trim() !== '') {
+                    if (!isValidEmail(value)) {
+                        errors.push(`Укажите корректный e-mail в поле: ${property.name}`);
+                    }
+                }
+
+                if (isCheckoutPhoneProperty(property) && String(value ?? '').trim() !== '') {
+                    if (!isValidRuPhone(value)) {
+                        errors.push(`Укажите корректный телефон в поле: ${property.name}`);
+                    }
                 }
             }
 
@@ -435,6 +450,11 @@ export default {
         async submitOrder() {
             if (!this.validateClient()) {
                 return;
+            }
+
+            const syncedProperties = this.syncPropertyFields();
+            if (syncedProperties && typeof syncedProperties === 'object') {
+                this.selection.properties = { ...syncedProperties };
             }
 
             lockCheckoutNavigation();

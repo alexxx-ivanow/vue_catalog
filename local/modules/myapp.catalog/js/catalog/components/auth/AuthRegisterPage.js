@@ -20,7 +20,28 @@ export default {
     },
     methods: {
         onPhoneInput(event) {
-            this.form.phone = formatRuPhoneInput(event.target.value);
+            const input = event.target;
+            const start = input.selectionStart ?? 0;
+            const end = input.selectionEnd ?? start;
+            const before = String(this.form.phone || '');
+            const formatted = formatRuPhoneInput(input.value);
+            this.form.phone = formatted;
+
+            this.$nextTick(() => {
+                if (!input || document.activeElement !== input) {
+                    return;
+                }
+                const delta = formatted.length - before.length;
+                let nextPos = Math.max(0, Math.min(formatted.length, start + delta));
+                if (start === before.length && delta > 0) {
+                    nextPos = formatted.length;
+                }
+                try {
+                    input.setSelectionRange(nextPos, nextPos);
+                } catch {
+                    // некоторые mobile browsers не поддерживают setSelectionRange на tel
+                }
+            });
         },
         async onSubmit() {
             this.loading = true;
@@ -59,11 +80,11 @@ export default {
             <form class="personal-form auth-form" @submit.prevent="onSubmit">
                 <label class="auth-form__field">
                     <span class="auth-form__label">Имя</span>
-                    <input v-model="form.name" type="text" class="auth-form__input" required>
+                    <input v-model="form.name" type="text" class="auth-form__input" required autocomplete="given-name">
                 </label>
                 <label class="auth-form__field">
                     <span class="auth-form__label">Фамилия</span>
-                    <input v-model="form.lastName" type="text" class="auth-form__input" required>
+                    <input v-model="form.lastName" type="text" class="auth-form__input" required autocomplete="family-name">
                 </label>
                 <label class="auth-form__field">
                     <span class="auth-form__label">E-mail</span>
@@ -77,6 +98,7 @@ export default {
                         class="auth-form__input"
                         required
                         autocomplete="tel"
+                        name="register-phone"
                         placeholder="+7 (___) ___-__-__"
                         @input="onPhoneInput"
                     >

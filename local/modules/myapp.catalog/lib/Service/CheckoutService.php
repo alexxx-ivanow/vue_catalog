@@ -211,6 +211,18 @@ class CheckoutService
             ];
         }
 
+        $formatErrors = self::validatePropertyFormats($order, $selection);
+        if (!empty($formatErrors)) {
+            return [
+                'success' => false,
+                'error' => implode('; ', $formatErrors),
+                'errors' => $formatErrors,
+                'propertyErrors' => $formatErrors,
+            ];
+        }
+
+        self::applyProperties($order, $selection);
+
         $saveResult = $order->save();
         if (!$saveResult->isSuccess()) {
             $errors = $saveResult->getErrorMessages();
@@ -715,6 +727,8 @@ class CheckoutService
                 'type' => (string)$prop['TYPE'],
                 'required' => $propertyValue->isRequired(),
                 'value' => self::stringifyPropertyValue($propertyValue->getValue()),
+                'isEmail' => self::isEmailPropertyMeta($prop),
+                'isPhone' => self::isPhonePropertyMeta($prop),
                 'options' => $options,
             ];
         }
@@ -777,6 +791,87 @@ class CheckoutService
         }
 
         return $errors;
+    }
+
+    private static function validatePropertyFormats(Order $order, array $selection): array
+    {
+        $errors = [];
+        $values = is_array($selection['properties'] ?? null) ? $selection['properties'] : [];
+
+        foreach (self::getOrderProperties($order) as $property) {
+            if (empty($property['isEmail'])) {
+                continue;
+            }
+
+            $value = self::resolveSubmittedPropertyValue(
+                $values,
+                (string)$property['code'],
+                (int)$property['id']
+            );
+            if ($value === '') {
+                continue;
+            }
+
+            if (!filter_var($value, FILTER_VALIDATE_EMAIL)) {
+                $errors[] = 'Укажите корректный e-mail в поле: ' . $property['name'];
+            }
+        }
+
+        foreach (self::getOrderProperties($order) as $property) {
+            if (empty($property['isPhone'])) {
+                continue;
+            }
+
+            $value = self::resolveSubmittedPropertyValue(
+                $values,
+                (string)$property['code'],
+                (int)$property['id']
+            );
+            if ($value === '') {
+                continue;
+            }
+
+            if (!self::isValidRuPhone($value)) {
+                $errors[] = 'Укажите корректный телефон в поле: ' . $property['name'];
+            }
+        }
+
+        return $errors;
+    }
+
+    private static function isValidRuPhone(string $phone): bool
+    {
+        $digits = preg_replace('/\D+/', '', $phone) ?? '';
+        if (strlen($digits) === 11 && $digits[0] === '8') {
+            $digits = '7' . substr($digits, 1);
+        }
+        if (strlen($digits) === 10) {
+            $digits = '7' . $digits;
+        }
+
+        return strlen($digits) === 11 && str_starts_with($digits, '7');
+    }
+
+    private static function isEmailPropertyMeta(array $prop): bool
+    {
+        if (($prop['IS_EMAIL'] ?? '') === 'Y') {
+            return true;
+        }
+
+        $code = strtoupper((string)($prop['CODE'] ?? ''));
+
+        return in_array($code, ['EMAIL', 'E_MAIL', 'MAIL', 'E-MAIL'], true);
+    }
+
+    private static function isPhonePropertyMeta(array $prop): bool
+    {
+        if (($prop['IS_PHONE'] ?? '') === 'Y') {
+            return true;
+        }
+
+        $code = strtoupper((string)($prop['CODE'] ?? ''));
+
+        return in_array($code, ['PHONE', 'TEL', 'PHONE_NUMBER', 'MOBILE'], true);
     }
 
     private static function calculateTotals(Order $order, array $cartTotals = []): array
@@ -863,8 +958,31 @@ class CheckoutService
 
     private static function resolvePaymentRedirect(Order $order): array
     {
+        $init = self::initiateUnpaidOnlinePayment($order);
+
+        return [
+            'redirectUrl' => $init['redirectUrl'] ?: null,
+            'isOnline' => (bool)$init['isOnline'],
+        ];
+    }
+
+    /**
+     * @return array{
+     *   success: bool,
+     *   redirectUrl: ?string,
+     *   template: ?string,
+     *   error: string,
+     *   isOnline: bool
+     * }
+     */
+    public static function initiateUnpaidOnlinePayment(Order $order): array
+    {
+        self::ensureModules();
+
         $request = Context::getCurrent()->getRequest();
         $redirectUrl = null;
+        $template = null;
+        $error = '';
         $isOnline = false;
 
         foreach ($order->getPaymentCollection() as $payment) {
@@ -884,15 +1002,52 @@ class CheckoutService
             $isOnline = true;
             $initResult = $service->initiatePay($payment, $request, self::paySystemInitiateMode());
             if ($initResult->isSuccess()) {
-                $redirectUrl = (string)$initResult->getPaymentUrl();
+                $url = (string)$initResult->getPaymentUrl();
+                if ($url !== '') {
+                    $redirectUrl = $url;
+                }
+                if (method_exists($initResult, 'getTemplate')) {
+                    $tpl = (string)$initResult->getTemplate();
+                    if ($tpl !== '') {
+                        $template = $tpl;
+                    }
+                }
+            } else {
+                $messages = $initResult->getErrorMessages();
+                $error = $messages !== [] ? implode('; ', $messages) : 'Не удалось инициировать оплату';
             }
+
             break;
         }
 
+        $success = ($redirectUrl !== null && $redirectUrl !== '')
+            || ($template !== null && $template !== '');
+
+        if (!$success && $error === '' && !$isOnline) {
+            $error = 'Онлайн-оплата для заказа недоступна';
+        }
+
         return [
-            'redirectUrl' => $redirectUrl ?: null,
+            'success' => $success,
+            'redirectUrl' => $redirectUrl,
+            'template' => $template,
+            'error' => $error,
             'isOnline' => $isOnline,
         ];
+    }
+
+    public static function paymentUrlForOrder(int $orderId): string
+    {
+        $orderId = max(0, $orderId);
+
+        return '/order/pay/' . $orderId;
+    }
+
+    public static function legacyPaymentUrlForOrder(int $orderId): string
+    {
+        $orderId = max(0, $orderId);
+
+        return '/personal/order/payment/?ORDER_ID=' . $orderId;
     }
 
     public static function canViewOrder(Order $order): bool
@@ -1000,8 +1155,18 @@ class CheckoutService
         }
 
         if ($isOnline && !$order->isPaid()) {
+            $init = self::initiateUnpaidOnlinePayment($order);
+            if (!empty($init['redirectUrl'])) {
+                self::storePaymentRedirectUrl($orderId, (string)$init['redirectUrl']);
+
+                return [
+                    'redirectUrl' => (string)$init['redirectUrl'],
+                    'isOnline' => true,
+                ];
+            }
+
             return [
-                'redirectUrl' => '/personal/order/payment/?ORDER_ID=' . $orderId,
+                'redirectUrl' => self::paymentUrlForOrder($orderId),
                 'isOnline' => true,
             ];
         }
@@ -1105,6 +1270,8 @@ class CheckoutService
                 'TYPE' => (string)($propertyMeta['TYPE'] ?? ''),
                 'IS_LOCATION' => (string)($propertyMeta['IS_LOCATION'] ?? ''),
                 'IS_ZIP' => (string)($propertyMeta['IS_ZIP'] ?? ''),
+                'IS_EMAIL' => (string)($propertyMeta['IS_EMAIL'] ?? ''),
+                'IS_PHONE' => (string)($propertyMeta['IS_PHONE'] ?? ''),
                 'ACTIVE' => (string)($propertyMeta['ACTIVE'] ?? 'Y'),
             ];
         }
@@ -1118,6 +1285,8 @@ class CheckoutService
                     'TYPE' => (string)$propertyMeta->getType(),
                     'IS_LOCATION' => (string)$propertyMeta->getField('IS_LOCATION'),
                     'IS_ZIP' => (string)$propertyMeta->getField('IS_ZIP'),
+                    'IS_EMAIL' => (string)$propertyMeta->getField('IS_EMAIL'),
+                    'IS_PHONE' => (string)$propertyMeta->getField('IS_PHONE'),
                     'ACTIVE' => (string)$propertyMeta->getField('ACTIVE'),
                 ];
             }
@@ -1128,21 +1297,47 @@ class CheckoutService
 
     private static function resolveSubmittedPropertyValue(array $values, string $code, int $id): string
     {
-        $candidates = [];
-        if ($code !== '' && array_key_exists($code, $values)) {
-            $candidates[] = $values[$code];
+        $keys = [];
+        if ($code !== '') {
+            $keys[] = $code;
+            $keys[] = strtoupper($code);
+            $keys[] = strtolower($code);
         }
-        if ($id > 0 && array_key_exists((string)$id, $values)) {
-            $candidates[] = $values[(string)$id];
-        }
-        if ($id > 0 && array_key_exists($id, $values)) {
-            $candidates[] = $values[$id];
+        if ($id > 0) {
+            $keys[] = (string)$id;
+            $keys[] = $id;
         }
 
-        foreach ($candidates as $candidate) {
-            $stringValue = self::stringifyPropertyValue($candidate);
+        foreach ($keys as $key) {
+            if (!array_key_exists($key, $values)) {
+                continue;
+            }
+            $stringValue = self::stringifyPropertyValue($values[$key]);
             if ($stringValue !== '') {
                 return $stringValue;
+            }
+        }
+
+        if ($code !== '') {
+            $codeUpper = strtoupper($code);
+            foreach ($values as $key => $value) {
+                if (strtoupper((string)$key) === $codeUpper) {
+                    $stringValue = self::stringifyPropertyValue($value);
+                    if ($stringValue !== '') {
+                        return $stringValue;
+                    }
+                }
+            }
+        }
+
+        if ($id > 0) {
+            foreach ($values as $key => $value) {
+                if ((string)$key === (string)$id || (int)$key === $id) {
+                    $stringValue = self::stringifyPropertyValue($value);
+                    if ($stringValue !== '') {
+                        return $stringValue;
+                    }
+                }
             }
         }
 
@@ -1315,7 +1510,7 @@ class CheckoutService
         }
     }
 
-    private static function ensureModules(): void
+    public static function ensureModules(): void
     {
         Loader::includeModule('sale');
         Loader::includeModule('catalog');

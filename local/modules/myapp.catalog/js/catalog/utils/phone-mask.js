@@ -35,3 +35,16 @@ export function formatRuPhoneInput(value) {
 
     return out;
 }
+
+/** Полный мобильный/городской РФ: 11 цифр, код страны 7 */
+export function isValidRuPhone(value) {
+    const digits = String(value || '').replace(/\D/g, '');
+    let normalized = digits;
+    if (normalized.startsWith('8') && normalized.length === 11) {
+        normalized = '7' + normalized.slice(1);
+    }
+    if (normalized.length === 10) {
+        normalized = '7' + normalized;
+    }
+    return normalized.length === 11 && normalized.startsWith('7');
+}

@@ -84,15 +84,15 @@ export default {
             <form v-else class="personal-form auth-form" @submit.prevent="onSubmit">
                 <label class="auth-form__field">
                     <span class="auth-form__label">Имя</span>
-                    <input v-model="form.name" type="text" class="auth-form__input" required>
+                    <input v-model="form.name" type="text" class="auth-form__input" required autocomplete="given-name">
                 </label>
                 <label class="auth-form__field">
                     <span class="auth-form__label">Фамилия</span>
-                    <input v-model="form.lastName" type="text" class="auth-form__input" required>
+                    <input v-model="form.lastName" type="text" class="auth-form__input" required autocomplete="family-name">
                 </label>
                 <label class="auth-form__field">
                     <span class="auth-form__label">E-mail</span>
-                    <input v-model="form.email" type="email" class="auth-form__input" required>
+                    <input v-model="form.email" type="email" class="auth-form__input" required autocomplete="email">
                 </label>
                 <label class="auth-form__field">
                     <span class="auth-form__label">Текущий пароль</span>

@@ -13,6 +13,7 @@ use MyApp\Catalog\Controller\OrderController;
 use MyApp\Catalog\Controller\AccountApiController;
 use MyApp\Catalog\Controller\AuthPageController;
 use MyApp\Catalog\Controller\OrderSuccessController;
+use MyApp\Catalog\Controller\OrderPaymentController;
 use MyApp\Catalog\Controller\PersonalController;
 use MyApp\Catalog\Controller\ProductController;
 
@@ -31,8 +32,11 @@ class WebRoutes
             ->where('id', '[0-9]+');
         $routes->get('/cart/', [CartController::class, 'index']);
         $routes->get('/order/', [OrderController::class, 'index']);
+        $routes->get('/order/pay/{id}', [OrderPaymentController::class, 'pay'])
+            ->where('id', '[0-9]+');
         $routes->get('/order/success/{id}', [OrderSuccessController::class, 'index'])
             ->where('id', '[0-9]+');
+        $routes->get('/personal/order/payment/', [OrderPaymentController::class, 'legacy']);
 
         $routes->get('/personal/profile/', [PersonalController::class, 'profile']);
         $routes->get('/personal/orders/', [PersonalController::class, 'orders']);
