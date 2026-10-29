@@ -43,9 +43,11 @@ export default {
         };
         window.addEventListener(AUTH_STATE_EVENT, this.onAuthState);
 
+        const isCartPage = window.__PAGE_DATA__?.page?.type === 'cart';
+
         if (typeof window.__BX__?.cartCount === 'number') {
             this.count = Math.max(0, Math.floor(window.__BX__.cartCount));
-        } else {
+        } else if (!isCartPage) {
             fetchCartCount().then((count) => {
                 this.count = count;
             });
