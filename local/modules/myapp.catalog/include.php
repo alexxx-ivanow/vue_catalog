@@ -28,6 +28,7 @@ Loader::registerAutoLoadClasses('myapp.catalog', [
     'MyApp\\Catalog\\Config\\Templates' => 'lib/Config/Templates.php',
     'MyApp\\Catalog\\Event\\CatalogCacheHandler' => 'lib/Event/CatalogCacheHandler.php',
     'MyApp\\Catalog\\Install\\FilterAggregateSchema' => 'lib/Install/FilterAggregateSchema.php',
+    'MyApp\\Catalog\\Model\\FilterAggregateTable' => 'lib/Model/FilterAggregateTable.php',
     'MyApp\\Catalog\\Service\\FilterAggregateService' => 'lib/Service/FilterAggregateService.php',
 ]);
 

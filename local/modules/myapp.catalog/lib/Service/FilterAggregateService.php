@@ -3,7 +3,9 @@
 namespace MyApp\Catalog\Service;
 
 use Bitrix\Main\Application;
+use Bitrix\Main\Type\DateTime;
 use MyApp\Catalog\Install\FilterAggregateSchema;
+use MyApp\Catalog\Model\FilterAggregateTable;
 
 final class FilterAggregateService
 {
@@ -15,15 +17,7 @@ final class FilterAggregateService
         $sectionId = max(0, $sectionId);
         FilterAggregateSchema::ensureTable();
 
-        $connection = Application::getConnection();
-        $table = FilterAggregateSchema::tableName();
-        $row = $connection->query("
-            SELECT CONFIG_HASH, PAYLOAD_JSON, IS_STALE
-            FROM {$table}
-            WHERE SECTION_ID = {$sectionId}
-            LIMIT 1
-        ")->fetch();
-
+        $row = FilterAggregateTable::getByPrimary($sectionId)->fetch();
         if (!$row) {
             return null;
         }
@@ -48,28 +42,26 @@ final class FilterAggregateService
         $sectionId = max(0, $sectionId);
         FilterAggregateSchema::ensureTable();
 
-        $connection = Application::getConnection();
-        $helper = $connection->getSqlHelper();
-        $table = FilterAggregateSchema::tableName();
         $json = (string)json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        $stale = $isStale ? 'Y' : 'N';
-        $now = date('Y-m-d H:i:s');
+        $primary = ['SECTION_ID' => $sectionId];
+        $fields = [
+            'CONFIG_HASH' => $configHash,
+            'PAYLOAD_JSON' => $json,
+            'IS_STALE' => $isStale ? 'Y' : 'N',
+            'UPDATED_AT' => new DateTime(),
+        ];
 
-        $connection->queryExecute("
-            INSERT INTO {$table} (SECTION_ID, CONFIG_HASH, PAYLOAD_JSON, IS_STALE, UPDATED_AT)
-            VALUES (
-                {$sectionId},
-                '" . $helper->forSql($configHash) . "',
-                '" . $helper->forSql($json) . "',
-                '{$stale}',
-                '" . $helper->forSql($now) . "'
-            )
-            ON DUPLICATE KEY UPDATE
-                CONFIG_HASH = VALUES(CONFIG_HASH),
-                PAYLOAD_JSON = VALUES(PAYLOAD_JSON),
-                IS_STALE = VALUES(IS_STALE),
-                UPDATED_AT = VALUES(UPDATED_AT)
-        ");
+        if (FilterAggregateTable::getByPrimary($primary)->fetch()) {
+            $result = FilterAggregateTable::update($primary, $fields);
+        } else {
+            $result = FilterAggregateTable::add(array_merge($primary, $fields));
+        }
+
+        if (!$result->isSuccess()) {
+            throw new \RuntimeException(
+                'Filter aggregate write failed: ' . implode('; ', $result->getErrorMessages())
+            );
+        }
     }
 
     public static function markStaleForSectionPath(int $sectionId): void
@@ -91,22 +83,23 @@ final class FilterAggregateService
         $sectionId = max(0, $sectionId);
         FilterAggregateSchema::ensureTable();
 
-        $connection = Application::getConnection();
-        $table = FilterAggregateSchema::tableName();
-        $connection->queryExecute("
-            UPDATE {$table}
-            SET IS_STALE = 'Y'
-            WHERE SECTION_ID = {$sectionId}
-        ");
+        if (!FilterAggregateTable::getByPrimary($sectionId)->fetch()) {
+            return;
+        }
+
+        $result = FilterAggregateTable::update($sectionId, ['IS_STALE' => 'Y']);
+        if (!$result->isSuccess()) {
+            throw new \RuntimeException(
+                'Filter aggregate markStale failed: ' . implode('; ', $result->getErrorMessages())
+            );
+        }
     }
 
     public static function clearAll(): void
     {
         FilterAggregateSchema::ensureTable();
 
-        $connection = Application::getConnection();
-        $table = FilterAggregateSchema::tableName();
-        $connection->queryExecute("TRUNCATE TABLE {$table}");
+        Application::getConnection()->truncateTable(FilterAggregateTable::getTableName());
     }
 
     public static function rebuildAndPersist(int $sectionId): void
